@@ -1,10 +1,11 @@
 name: Package
 
 # Kept apart from CI so an installer problem never hides a test failure.
+# Manual or on a version tag only: the repository is private, and macOS and
+# Windows runner minutes are billed at a multiple.
 on:
   push:
-    branches: [main]
-    paths-ignore: ['**.md']
+    tags: ['v*']
   workflow_dispatch:
 
 jobs:

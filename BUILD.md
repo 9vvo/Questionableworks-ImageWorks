@@ -29,8 +29,9 @@ The binary is `target/release/imageworks` (`imageworks.exe` on Windows).
     cargo packager --release -p iw-app --formats nsis    # Windows installer (.exe)
 
 Output goes to `dist/`. Configuration is under `[package.metadata.packager]` in
-`crates/iw-app/Cargo.toml`. The `Package` workflow runs this on every push to `main`
-and uploads the installers as artifacts.
+`crates/iw-app/Cargo.toml`. The `Package` workflow runs this when started by hand
+(Actions tab > Package > Run workflow) or when a `v*` tag is pushed, and uploads the
+installers as artifacts.
 
 Packages are unsigned, and signing is not planned (personal-use project). macOS
 Gatekeeper and Windows SmartScreen will warn on first launch.

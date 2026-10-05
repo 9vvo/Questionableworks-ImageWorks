@@ -65,3 +65,6 @@ Newest last. One entry per decision: what, why, and whether the owner confirmed 
 - **Golden PNGs store premultiplied bytes unchanged.** Converting to straight alpha
   loses precision at low alpha, which would hide real differences.
 - **`png` crate as a test-only dependency of the engine.** MIT OR Apache-2.0.
+- **Packaging runs on demand or on a `v*` tag, not on every push.** The repository
+  is private, so Actions minutes are metered, with macOS and Windows runners billed
+  at a multiple. Installers are only needed when someone wants to install a build.

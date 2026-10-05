@@ -5,8 +5,14 @@ done in `CLAUDE.md` section 5 and names its evidence.
 
 ## Next session
 
-**M0 and M1 are complete. Start M2** (document model, command and history engine,
-native format, atomic save, PNG and JPEG import and export).
+**M0 is complete. M1's engine work is finished, but its Windows CI run has not
+completed:** GitHub did not start the Windows and licence jobs ("job was not acquired
+by Runner"), a GitHub-side failure. macOS CI passed. First, get a green `CI` run on
+the latest commit (re-run it from the Actions tab if it is still stuck), then mark M1
+complete here.
+
+**Then start M2** (document model, command and history engine, native format, atomic
+save, PNG and JPEG import and export).
 
 Things M2 should know:
 
@@ -79,7 +85,7 @@ Run `cargo run --release -p iw-app` on each OS.
    from the Start menu. Both are unsigned, so expect a Gatekeeper or SmartScreen
    warning.
 
-## M1: tiles, pixel formats, compositor (complete)
+## M1: tiles, pixel formats, compositor (engine finished, Windows CI pending)
 
 M1 is engine-only. By the charter's definition a feature is `done` only once the UI,
 commands, undo and the file format also handle it, so the rows below stay `partial`
