@@ -37,11 +37,11 @@ Do first, in this order:
 
 | Requirement | macOS | Windows | Notes |
 | --- | --- | --- | --- |
-| Renders through wgpu | untested | untested | Works on Linux with a software adapter |
+| Renders through wgpu | pass | untested | macOS: Metal on Apple M5 Pro (owner's Mac mini, 2026-10-05). Works on Linux with a software adapter |
 | Dockable panels | untested | untested | Works on Linux. Panels dock, split and tab inside the main window; `egui_dock` does not detach a panel into its own OS window, which matters for multi-monitor layouts |
-| Native menu bar | untested | untested | Code written, never compiled for either OS |
+| Native menu bar | partial | untested | macOS: compiles and reports installed; menu items not yet clicked. Never compiled for Windows |
 | Native file dialogs | untested | untested | Code written, never exercised |
-| HiDPI | untested | untested | |
+| HiDPI | untested | untested | First macOS run was on a 1.0-scale 5120x1440 display, so it proves nothing about Retina |
 | Pen pressure | expected fail | untested | winit 0.30 turns Windows pen input into touch events with force, which the pen probe reads. Its macOS backend does not report tablet pressure at all (checked in the winit source), so macOS needs a native hook |
 
 ### Needs manual check
