@@ -1,0 +1,24 @@
+[package]
+name = "iw-app"
+description = "ImageWorks desktop shell (currently the M0 UI toolkit spike)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "imageworks"
+path = "src/main.rs"
+
+[dependencies]
+iw-engine = { path = "../iw-engine" }
+eframe = { version = "0.36", default-features = false, features = ["wgpu", "default_fonts", "x11", "wayland"] }
+egui_dock = "0.21"
+rfd = "0.17"
+
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+muda = "0.21"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+raw-window-handle = "0.6"

@@ -1,0 +1,14 @@
+[workspace]
+resolver = "2"
+members = ["crates/iw-engine", "crates/iw-app"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.95"
+license = "LicenseRef-Proprietary"
+publish = false
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
