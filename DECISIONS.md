@@ -29,3 +29,13 @@ Newest last. One entry per decision: what, why, and whether the owner confirmed 
   failure in CI.
 - **Linux development builds show menu commands in-window.** `muda` needs GTK on
   Linux, which is outside the licence policy's spirit for no shipping benefit.
+- **egui/eframe + egui_dock + muda + rfd is the UI toolkit.** On the owner's Mac it
+  passed wgpu rendering (Metal), docking, native menu bar and both file dialogs.
+- **Pen pressure and HiDPI accepted as untested risks.** Owner has no tablet or
+  Retina display and chose to proceed. Pen pressure is expected to need a native
+  macOS hook; it has to be proven on hardware before M6 is done.
+- **The app is for personal use, possibly shared with a few friends.** Stated by the
+  owner. Consequence: code signing and notarisation are not planned; unsigned builds
+  with a Gatekeeper or SmartScreen warning are acceptable.
+- **Markdown-only pushes do not trigger CI or packaging.** Status updates were
+  cancelling and restarting in-progress runs.

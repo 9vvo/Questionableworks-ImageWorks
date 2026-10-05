@@ -5,21 +5,24 @@ done in `CLAUDE.md` section 5 and names its evidence.
 
 ## Next session
 
-**Milestone M0 is not finished.** Everything that can be checked on a Linux machine
-is done; everything that needs macOS, Windows or GitHub Actions has never run.
+**M0 is waiting on one thing: the first green run of `CI` and `Package` on GitHub.**
+Neither workflow had completed when this was written, and the Windows build of
+`native_menu.rs` has never compiled.
 
 Do first, in this order:
 
 1. Open the repository's Actions tab. Fix whatever is red in `CI`, then in `Package`.
-   Neither workflow has ever executed. `native_menu.rs` has never been compiled for
-   macOS or Windows, so start there if the build fails.
-2. Run the manual checks below on a Mac and a Windows PC and record the results in
-   the spike table.
-3. macOS pen pressure is expected to fail (see the spike table). Add a native
-   `NSEvent` monitor in `iw-app` that reads tablet pressure, then re-test. If that
-   cannot be made to work, the charter's fallback is a C++/Qt 6 shell.
-4. Add a real application icon to the packaging config.
-5. When every spike row is `pass`, mark M0 done and stop.
+2. When both are green, mark the CI and packaging rows `done`, mark M0 done, and
+   start M1.
+
+Carried forward, not blocking M0:
+
+- Nobody has run the app on Windows. Do manual checks 1 to 6 there when a Windows
+  machine is available.
+- Pen pressure and HiDPI are untested with the risk accepted by the owner (see the
+  spike table). Pen pressure must be tested on a tablet before M6 is marked done.
+- The macOS app menu shows the window title instead of "ImageWorks". Fix in M3.
+- Packaging has no application icon. Add one in M3.
 
 ## M0: foundation
 
@@ -41,8 +44,8 @@ Do first, in this order:
 | Dockable panels | pass | untested | Works on Linux. Panels dock, split and tab inside the main window; `egui_dock` does not detach a panel into its own OS window, which matters for multi-monitor layouts |
 | Native menu bar | pass | untested | macOS: app, Spike and Window menus show in the system menu bar (2026-10-05). The app menu is titled with the window title instead of "ImageWorks"; cosmetic, fix in M3. Never compiled for Windows |
 | Native file dialogs | pass | untested | macOS: open and save dialogs both return the chosen path (2026-10-05) |
-| HiDPI | untested | untested | First macOS run was on a 1.0-scale 5120x1440 display, so it proves nothing about Retina |
-| Pen pressure | expected fail | untested | winit 0.30 turns Windows pen input into touch events with force, which the pen probe reads. Its macOS backend does not report tablet pressure at all (checked in the winit source), so macOS needs a native hook |
+| HiDPI | untested, risk accepted | untested | Owner has no Retina or scaled display; accepted 2026-10-05. Toolkit handles scaling itself |
+| Pen pressure | untested, risk accepted | untested | Owner has no tablet; accepted 2026-10-05. Expected to fail on macOS: winit 0.30 reports pen force on Windows but no tablet pressure on macOS, so a native `NSEvent` hook is needed. Must be written and tested on a real tablet before M6 (brush engine) is marked done |
 
 ### Needs manual check
 

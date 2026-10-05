@@ -32,7 +32,8 @@ Output goes to `dist/`. Configuration is under `[package.metadata.packager]` in
 `crates/iw-app/Cargo.toml`. The `Package` workflow runs this on every push to `main`
 and uploads the installers as artifacts.
 
-Packages are unsigned. Code signing and notarisation are not set up yet.
+Packages are unsigned, and signing is not planned (personal-use project). macOS
+Gatekeeper and Windows SmartScreen will warn on first launch.
 
 ## Environments without access to static.rust-lang.org
 
