@@ -38,9 +38,9 @@ Do first, in this order:
 | Requirement | macOS | Windows | Notes |
 | --- | --- | --- | --- |
 | Renders through wgpu | pass | untested | macOS: Metal on Apple M5 Pro (owner's Mac mini, 2026-10-05). Works on Linux with a software adapter |
-| Dockable panels | untested | untested | Works on Linux. Panels dock, split and tab inside the main window; `egui_dock` does not detach a panel into its own OS window, which matters for multi-monitor layouts |
-| Native menu bar | partial | untested | macOS: compiles and reports installed; menu items not yet clicked. Never compiled for Windows |
-| Native file dialogs | untested | untested | Code written, never exercised |
+| Dockable panels | pass | untested | Works on Linux. Panels dock, split and tab inside the main window; `egui_dock` does not detach a panel into its own OS window, which matters for multi-monitor layouts |
+| Native menu bar | fail | untested | macOS: compiles and `setMainMenu` is called, but the owner does not see the Spike and Window menus (2026-10-05). Cause not yet known. Never compiled for Windows |
+| Native file dialogs | untested | untested | Blocked on macOS by the menu failure: the dialogs are only reachable from the menu |
 | HiDPI | untested | untested | First macOS run was on a 1.0-scale 5120x1440 display, so it proves nothing about Retina |
 | Pen pressure | expected fail | untested | winit 0.30 turns Windows pen input into touch events with force, which the pen probe reads. Its macOS backend does not report tablet pressure at all (checked in the winit source), so macOS needs a native hook |
 
@@ -63,7 +63,7 @@ Run `cargo run --release -p iw-app` on each OS.
    matches the display setting (2.0 on Retina, 1.5 at 150%). Drag the window to a
    monitor with a different scale; it stays sharp and the value updates.
 6. **Mouse drawing.** Drag in the Pen probe panel; a thin line follows the cursor.
-   (Not verified on Linux either: no input-injection tool was available.)
+   Passed on macOS 2026-10-05.
 7. **Pen pressure.** With a tablet, draw a stroke going from light to hard pressure.
    The line thickens along its length and the panel header shows "pressure received".
    A hairline with "no pressure data received yet" is a fail.
