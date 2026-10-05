@@ -40,7 +40,7 @@ Do first, in this order:
 | Renders through wgpu | pass | untested | macOS: Metal on Apple M5 Pro (owner's Mac mini, 2026-10-05). Works on Linux with a software adapter |
 | Dockable panels | pass | untested | Works on Linux. Panels dock, split and tab inside the main window; `egui_dock` does not detach a panel into its own OS window, which matters for multi-monitor layouts |
 | Native menu bar | pass | untested | macOS: app, Spike and Window menus show in the system menu bar (2026-10-05). The app menu is titled with the window title instead of "ImageWorks"; cosmetic, fix in M3. Never compiled for Windows |
-| Native file dialogs | untested | untested | Menu items are visible on macOS; not yet clicked |
+| Native file dialogs | partial | untested | macOS: open dialog returns the chosen path (2026-10-05); save dialog not yet tried |
 | HiDPI | untested | untested | First macOS run was on a 1.0-scale 5120x1440 display, so it proves nothing about Retina |
 | Pen pressure | expected fail | untested | winit 0.30 turns Windows pen input into touch events with force, which the pen probe reads. Its macOS backend does not report tablet pressure at all (checked in the winit source), so macOS needs a native hook |
 
