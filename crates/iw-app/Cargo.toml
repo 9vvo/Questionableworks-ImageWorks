@@ -22,3 +22,13 @@ muda = "0.21"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 raw-window-handle = "0.6"
+
+# Installers: `cargo packager --release -p iw-app --formats <dmg|nsis>`. See BUILD.md.
+[package.metadata.packager]
+product-name = "ImageWorks"
+identifier = "com.questionableworks.imageworks"
+publisher = "Questionableworks"
+category = "GraphicsAndDesign"
+before-packaging-command = "cargo build --release -p iw-app"
+out-dir = "../../dist"
+binaries-dir = "../../target/release"

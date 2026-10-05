@@ -1,10 +1,10 @@
 # Image editor: project charter
 
-Commit this file to the repo root as `CLAUDE.md`. It is the standing brief for every
-session. Each session works on one milestone, using the session prompt at the bottom.
+This is the standing brief for every session. Each session works on one milestone,
+using the session prompt at the bottom.
 
-Lines marked **[confirm]** are proposals from the review. Change them before the first
-session, not during one.
+Lines marked **[confirm]** are defaults the owner has not explicitly confirmed. Work
+proceeds on them; changing one is a section 2 change and needs the owner.
 
 ---
 
@@ -32,8 +32,9 @@ generative models, generative fill or expand, any prompt box.
   panels, native menu bar, native file dialogs, HiDPI, and pen pressure from a tablet.
   If no Rust toolkit passes, fall back to a C++/Qt 6 shell over the same engine.
 - **Targets [confirm]:** macOS 13+ (arm64 and x64), Windows 10 22H2+ (x64).
-- **Dependency licenses [confirm]:** MIT, Apache-2.0, BSD, zlib, MPL by default.
-  LGPL only when dynamically linked. No GPL. Ask before adding anything else.
+- **Dependency licenses:** MIT, Apache-2.0, BSD, zlib, MPL, BSL-1.0, ISC,
+  Unicode-3.0. LGPL only when dynamically linked. No GPL. Ask before adding anything
+  else. `deny.toml` is the enforced list, including per-crate exceptions.
 - **Repo and CI:** GitHub Actions builds and tests on macOS and Windows runners for
   every push. A red build is the first thing fixed in any session.
 - **Pixel model:** tile-based storage, premultiplied alpha, generic over 8-bit,

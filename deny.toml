@@ -1,0 +1,29 @@
+# Dependency licence policy (CLAUDE.md section 2). CI runs `cargo deny check licenses`.
+# Only the platforms we ship are checked; Linux-only development dependencies are not.
+
+[graph]
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-pc-windows-msvc"]
+
+[licenses]
+confidence-threshold = 0.9
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Zlib",
+    "MPL-2.0",
+    # Permissive licences approved by the owner on 2026-10-05 (see DECISIONS.md).
+    "BSL-1.0",
+    "ISC",
+    "Unicode-3.0",
+]
+
+# Font licences are allowed for the toolkit's bundled fonts only, not in general.
+[[licenses.exceptions]]
+crate = "epaint_default_fonts"
+allow = ["OFL-1.1", "Ubuntu-font-1.0"]
+
+[licenses.private]
+ignore = true

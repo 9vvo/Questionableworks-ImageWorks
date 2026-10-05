@@ -1,0 +1,35 @@
+name: Package
+
+# Kept apart from CI so an installer problem never hides a test failure.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            format: dmg
+            glob: dist/*.dmg
+          - os: windows-latest
+            format: nsis
+            glob: dist/*.exe
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install cargo-packager --locked --version 0.11.8
+      - run: cargo packager --release -p iw-app --formats ${{ matrix.format }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: imageworks-${{ matrix.format }}
+          path: ${{ matrix.glob }}
+          if-no-files-found: error
