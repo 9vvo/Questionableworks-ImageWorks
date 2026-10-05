@@ -39,3 +39,29 @@ Newest last. One entry per decision: what, why, and whether the owner confirmed 
   with a Gatekeeper or SmartScreen warning are acceptable.
 - **Markdown-only pushes do not trigger CI or packaging.** Status updates were
   cancelling and restarting in-progress runs.
+
+## 2026-10-05 (M1)
+
+- **Tile size 256 x 256.** Small enough that a brush stroke touches few tiles, large
+  enough to keep per-tile overhead low; also a natural GPU texture upload unit.
+- **Rasters are unbounded and sparse, with signed coordinates.** A layer can extend
+  past the canvas, and empty areas cost nothing. Canvas clipping is the document's
+  job (M2).
+- **RGBA only for now.** Document colour mode arrives with the document model (M2)
+  and CMYK in M21; adding a colour-model parameter before there is a second model
+  would be guesswork.
+- **Blend modes use gamma-encoded values in 8-bit and 16-bit documents.** The
+  charter asks for linear light "where the mode requires it". None does: matching
+  the look users expect from Photoshop requires blending encoded values. 32-bit
+  float documents are linear, so blending there is linear. See `docs/BLEND_MODES.md`.
+- **Blend formulas follow the PDF 1.7 / W3C Compositing definitions.** They are the
+  published definitions of these modes. Differences from Photoshop are listed in
+  `docs/BLEND_MODES.md`.
+- **The compositor accumulates in `f32` and quantises once.** Avoids rounding error
+  building up across layers in 8-bit documents. Results can differ from Photoshop,
+  which quantises per layer, by one 8-bit step.
+- **Dissolve's pattern is a hash of pixel position.** Stable across recomposites and
+  identical on every platform, so it can be golden-tested.
+- **Golden PNGs store premultiplied bytes unchanged.** Converting to straight alpha
+  loses precision at low alpha, which would hide real differences.
+- **`png` crate as a test-only dependency of the engine.** MIT OR Apache-2.0.

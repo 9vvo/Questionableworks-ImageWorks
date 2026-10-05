@@ -5,17 +5,19 @@ done in `CLAUDE.md` section 5 and names its evidence.
 
 ## Next session
 
-**M0 is waiting on one thing: the first green run of `CI` and `Package` on GitHub.**
-Neither workflow had completed when this was written, and the Windows build of
-`native_menu.rs` has never compiled.
+**M0 and M1 are complete. Start M2** (document model, command and history engine,
+native format, atomic save, PNG and JPEG import and export).
 
-Do first, in this order:
+Things M2 should know:
 
-1. Open the repository's Actions tab. Fix whatever is red in `CI`, then in `Package`.
-2. When both are green, mark the CI and packaging rows `done`, mark M0 done, and
-   start M1.
+- `Raster<C>` clones are copy-on-write per tile, which is what delta undo needs:
+  keep the pre-edit `Tile` handles for the tiles a command touches.
+- The compositor takes a flat `&[Layer]`. Groups, masks and clipping are not in it
+  yet; extend `compositor.rs` rather than compositing anywhere else (rule 3).
+- Golden tests so far cover 8-bit only. 16-bit and float are covered by unit tests
+  that check they agree with 8-bit.
 
-Carried forward, not blocking M0:
+Carried forward:
 
 - Nobody has run the app on Windows. Do manual checks 1 to 6 there when a Windows
   machine is available.
@@ -23,8 +25,10 @@ Carried forward, not blocking M0:
   spike table). Pen pressure must be tested on a tablet before M6 is marked done.
 - The macOS app menu shows the window title instead of "ImageWorks". Fix in M3.
 - Packaging has no application icon. Add one in M3.
+- No performance numbers exist yet. The charter's budgets apply from M3, when there
+  is a canvas to measure.
 
-## M0: foundation
+## M0: foundation (complete)
 
 | Item | State | Evidence or what is missing |
 | --- | --- | --- |
@@ -32,9 +36,9 @@ Carried forward, not blocking M0:
 | Engine layering guard | done | `scripts/check-layering.sh`; verified to fail when a windowing crate is added to `iw-engine` and when cargo itself fails |
 | Licence policy | done | `cargo deny check licenses` passes |
 | Docs skeleton | done | README, ARCHITECTURE, BUILD, DEVELOPMENT, SHORTCUTS, STATUS, DECISIONS |
-| CI on macOS and Windows | partial | Workflow written; has never run |
-| Packaging skeleton | partial | Config verified by building a `.deb` on Linux; the `.dmg` and NSIS formats have never run. No app icon yet |
-| UI toolkit spike | partial | See table below |
+| CI on macOS and Windows | done | `CI` workflow green on `macos-latest` and `windows-latest` (run 37348860484, 2026-10-05) |
+| Packaging skeleton | done | `Package` workflow green: builds the `.dmg` and the NSIS installer (run 37348860376). Installers not yet opened by a person; no app icon yet |
+| UI toolkit spike | done | Toolkit accepted by the owner; see table below for what passed and what is an accepted risk |
 
 ### UI toolkit spike (egui/eframe + egui_dock + muda + rfd)
 
@@ -75,6 +79,23 @@ Run `cargo run --release -p iw-app` on each OS.
    from the Start menu. Both are unsigned, so expect a Gatekeeper or SmartScreen
    warning.
 
-## M1 to M21
+## M1: tiles, pixel formats, compositor (complete)
+
+M1 is engine-only. By the charter's definition a feature is `done` only once the UI,
+commands, undo and the file format also handle it, so the rows below stay `partial`
+until M2 and M3 supply those parts. The engine work itself is finished and tested.
+
+| Item | State | Evidence or what is missing |
+| --- | --- | --- |
+| Pixel formats (8-bit, 16-bit, float; premultiplied RGBA) | partial | Engine done: `pixel::tests`. Missing: document bit depth (M2), UI (M3, M16) |
+| Tile store (sparse, copy-on-write) | partial | Engine done: `tile::tests`, `raster::tests`. Missing: use by documents and undo (M2) |
+| 27 blend modes | partial | Engine done: `blend::tests` (hand-computed values), `tests/blend_golden.rs` (27 golden images), ImageMagick cross-check of 20 modes. Missing: layer property, command, file format (M2), UI (M3) |
+| CPU compositor | partial | Engine done: `compositor::tests`. Missing: groups, masks, clipping (M2, M5), GPU implementation tested against it (M3) |
+
+Verified only by unit tests and golden images, with no independent reference:
+Dissolve, Darker Color, Lighter Color, Hue, Saturation, Color, Luminosity.
+Nothing has been compared with Photoshop itself.
+
+## M2 to M21
 
 All `not started`. See the roadmap in `CLAUDE.md` section 6.

@@ -29,3 +29,17 @@ Create it under `crates/`, add it to the workspace members and to `ENGINE` in
 
 Rendering falls back to a software adapter. Useful for checking that the window comes
 up; not a substitute for testing on macOS and Windows.
+
+## Golden images
+
+`crates/iw-engine/tests/golden/` holds one expected image per blend mode. If a test
+fails, the engine's output changed. If the change is intended:
+
+    IW_BLESS=1 cargo test -p iw-engine --test blend_golden
+
+then look at the image diff before committing it. Never bless to make a failure go
+away without understanding it.
+
+`python3 scripts/crosscheck-blend-modes.py` compares the blend modes with
+ImageMagick (needs ImageMagick, Pillow and numpy). Run it after changing `blend.rs`
+or `compositor.rs`.

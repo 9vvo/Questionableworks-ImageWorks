@@ -1361,6 +1361,9 @@ dependencies = [
 [[package]]
 name = "iw-engine"
 version = "0.0.1"
+dependencies = [
+ "png",
+]
 
 [[package]]
 name = "jni"

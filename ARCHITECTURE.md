@@ -7,12 +7,37 @@ implements them today. It grows with each milestone.
 
 | Crate | Role | May depend on UI / windowing / GPU surface |
 | --- | --- | --- |
-| `crates/iw-engine` | Headless engine. Currently empty apart from its version. | No |
+| `crates/iw-engine` | Headless engine: pixel formats, tile store, blend modes, compositor. | No |
 | `crates/iw-app` | Desktop shell, binary `imageworks`. Currently the M0 toolkit spike. | Yes |
 
 The engine starts as one crate. Split it (tiles, compositor, document, formats, ...)
 when a subsystem has a reason to compile or be depended on separately, not before.
 Every engine crate is listed in `scripts/check-layering.sh`.
+
+## Engine modules
+
+| Module | Holds |
+| --- | --- |
+| `pixel` | `Channel` trait for 8-bit, 16-bit and float samples; premultiplied RGBA `Pixel<C>` |
+| `geom` | `Rect` in document pixel coordinates (may be negative) |
+| `tile` | 256 x 256 copy-on-write `Tile<C>` and `TileCoord` |
+| `raster` | `Raster<C>`: unbounded sparse grid of tiles; a missing tile is transparent |
+| `blend` | `BlendMode` and the blend function for each of the 27 modes |
+| `compositor` | CPU reference compositor, one tile at a time |
+
+Design points that later milestones rely on:
+
+- **Tiles are reference-counted and copy-on-write.** Cloning a raster copies no
+  pixels. An undo record can hold the previous version of only the tiles an edit
+  touched (rule 4).
+- **Compositing is per tile** (`composite_tile`), so the canvas can recomposite only
+  dirty tiles (rule 5). A tile covered by a single opaque Normal layer is returned
+  shared, not copied.
+- **The stack is accumulated in `f32`** and converted to the channel type once, so
+  rounding error does not grow with the number of layers.
+- **`blend.rs` is the only definition of the blend modes** (rule 3). The GPU
+  compositor in M3 must be tested against this CPU implementation. Formulas and
+  known differences from Photoshop are in `docs/BLEND_MODES.md`.
 
 ## Enforced rules
 
