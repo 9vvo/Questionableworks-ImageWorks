@@ -36,6 +36,12 @@ jobs:
       - run: cargo build --release -p iw-app
       - name: Launch check
         run: ./target/release/imageworks --version
+      - name: Open a document and export it, without a display
+        run: |
+          ./target/release/imageworks convert crates/iw-engine/tests/fixtures/v1.iwdoc target/smoke.png
+          ./target/release/imageworks convert target/smoke.png target/smoke.jpg
+          ./target/release/imageworks convert target/smoke.jpg target/smoke.iwdoc
+          test -s target/smoke.png && test -s target/smoke.jpg && test -s target/smoke.iwdoc
       - name: Intel macOS also compiles
         if: runner.os == 'macOS'
         run: |

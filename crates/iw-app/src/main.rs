@@ -5,19 +5,16 @@
 //! bar, native file dialogs, HiDPI and pen pressure on macOS and Windows.
 //! It exposes no editing features, because none are done yet.
 
+mod cli;
 mod native_menu;
 mod spike;
 
 fn main() -> eframe::Result {
-    // `--version` is the CI launch check for packaged builds: it must work
-    // without a display.
-    if std::env::args().any(|a| a == "--version") {
-        println!(
-            "ImageWorks {} (engine {})",
-            env!("CARGO_PKG_VERSION"),
-            iw_engine::VERSION
-        );
-        return Ok(());
+    // Command-line use never opens a window, so it works without a display
+    // (and is what CI runs).
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(code) = cli::run(&args) {
+        std::process::exit(code);
     }
 
     let options = eframe::NativeOptions {

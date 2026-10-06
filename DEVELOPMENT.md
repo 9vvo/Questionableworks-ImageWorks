@@ -43,3 +43,17 @@ away without understanding it.
 `python3 scripts/crosscheck-blend-modes.py` compares the blend modes with
 ImageMagick (needs ImageMagick, Pillow and numpy). Run it after changing `blend.rs`
 or `compositor.rs`.
+
+## The native format fixture
+
+`crates/iw-engine/tests/fixtures/v1.iwdoc` proves that files saved by format version 1
+still open. Never regenerate it. If you change the format so that old readers would
+misread new files, raise `VERSION` in `format/native.rs`, keep reading version 1, add
+a new fixture and test beside the old ones, and update `docs/FILE_FORMAT.md`.
+
+## Adding a command
+
+Add the variant to `Command`, handle it in `command::apply` (validate first, then
+change the document, then return the inverse and the damage), give it a label, and
+add it to the list in `history::tests::every_command_undoes_and_redoes_exactly` and
+to the random test beside it.

@@ -79,3 +79,46 @@ Newest last. One entry per decision: what, why, and whether the owner confirmed 
   engine and a running shell, and it lets an assistant exercise the real app on the
   owner's machine, which is otherwise untestable from CI. Not yet decided: the
   transport and which MCP library to use (licence to be checked then).
+
+## 2026-10-06 (M2)
+
+- **Native extension is `.iwdoc`.** `.iwd` is taken by another well-known format.
+- **The native file is a ZIP with a JSON manifest and one entry per tile.** It can be
+  inspected and repaired with ordinary tools, extends naturally (embedded files for
+  smart objects later), and per-tile entries allow partial loading later. Cost: files
+  are larger than a purpose-built binary format would be.
+- **Commands are data and return their own inverse.** Chosen over objects with
+  `undo()` methods because data can be recorded (actions, M18), sent over MCP (M3a)
+  and tested by comparing documents.
+- **Layer ids are never reused, even after undo.** Document equality therefore
+  ignores the id counter; the counter is still saved in the file.
+- **Layers carry an offset.** Moving a layer copies no pixels and needs no undo data
+  beyond the old offset. The compositor handles offsets that are not tile-aligned.
+- **Groups are pass-through by default**, as in Photoshop, and can be switched to
+  isolated with their own blend mode.
+- **A locked layer cannot have its pixels edited or be moved.** It can still be
+  renamed, hidden, reordered and deleted. One lock flag for now; Photoshop's separate
+  transparency/pixels/position locks can be added to the format later without
+  breaking it.
+- **Alpha channels and paths are stored and undoable now, with no tools yet.** The
+  document model and file format carry them so M4 and M11 do not need a format
+  change.
+- **PNG and JPEG codecs: `png` crate for PNG, `image` crate (JPEG only) for JPEG.**
+  `jpeg-encoder` was rejected because its licence adds IJG terms, which are outside
+  the allow-list; `image`'s encoder is inside it. `image` always encodes 4:2:2 chroma.
+- **JPEG export flattens onto white.** JPEG has no transparency and white is what
+  users expect from a transparent canvas.
+- **Float documents export to PNG as 16-bit, clamped to 0..1.** PNG has no float
+  format.
+- **Import size is capped at 2^30 pixels**, to refuse files with absurd dimensions
+  before allocating for them.
+- **Consequence of premultiplied 8-bit storage, measured:** importing a PNG and
+  exporting it again changes colour under partial transparency by at most one 8-bit
+  step in the composited result, and colour under fully transparent pixels is not
+  kept. Invisible on screen; it would matter for game textures that rely on colour
+  bleeding under transparent pixels. Changing it would be a charter section 2 change.
+- **Dependencies are optimised in debug builds** (`profile.dev.package."*"`).
+  Unoptimised compression made the test suite about ten times slower.
+- **The CI smoke test runs the release binary's `convert` command**, not the
+  installer. Launching the packaged app on a runner needs a display and comes with
+  the real shell in M3.
