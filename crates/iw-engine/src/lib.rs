@@ -5,8 +5,11 @@
 //! milestone by milestone; see `STATUS.md`.
 
 pub mod blend;
+pub mod command;
 pub mod compositor;
+pub mod document;
 pub mod geom;
+pub mod history;
 pub mod pixel;
 pub mod raster;
 pub mod tile;
