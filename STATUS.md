@@ -5,14 +5,8 @@ done in `CLAUDE.md` section 5 and names its evidence.
 
 ## Next session
 
-**M0 is complete. M1's engine work is finished, but its Windows CI run has not
-completed:** GitHub did not start the Windows and licence jobs ("job was not acquired
-by Runner"), a GitHub-side failure. macOS CI passed. First, get a green `CI` run on
-the latest commit (re-run it from the Actions tab if it is still stuck), then mark M1
-complete here.
-
-**Then start M2** (document model, command and history engine, native format, atomic
-save, PNG and JPEG import and export).
+**M0 and M1 are complete. Start M2** (document model, command and history engine,
+native format, atomic save, PNG and JPEG import and export).
 
 Things M2 should know:
 
@@ -31,6 +25,9 @@ Carried forward:
   spike table). Pen pressure must be tested on a tablet before M6 is marked done.
 - The macOS app menu shows the window title instead of "ImageWorks". Fix in M3.
 - Packaging has no application icon. Add one in M3.
+- M3a (MCP server) was added to the roadmap after M3 at the owner's request. Design
+  M2's command API with it in mind: commands need stable names and serialisable
+  parameters, which actions (M18) need anyway.
 - No performance numbers exist yet. The charter's budgets apply from M3, when there
   is a canvas to measure.
 
@@ -85,11 +82,12 @@ Run `cargo run --release -p iw-app` on each OS.
    from the Start menu. Both are unsigned, so expect a Gatekeeper or SmartScreen
    warning.
 
-## M1: tiles, pixel formats, compositor (engine finished, Windows CI pending)
+## M1: tiles, pixel formats, compositor (complete)
 
 M1 is engine-only. By the charter's definition a feature is `done` only once the UI,
 commands, undo and the file format also handle it, so the rows below stay `partial`
-until M2 and M3 supply those parts. The engine work itself is finished and tested.
+until M2 and M3 supply those parts. The engine work itself is finished and tested;
+`CI` is green on macOS and Windows (run 37370995492, 2026-10-06).
 
 | Item | State | Evidence or what is missing |
 | --- | --- | --- |
@@ -102,6 +100,6 @@ Verified only by unit tests and golden images, with no independent reference:
 Dissolve, Darker Color, Lighter Color, Hue, Saturation, Color, Luminosity.
 Nothing has been compared with Photoshop itself.
 
-## M2 to M21
+## M2 to M21, including M3a
 
 All `not started`. See the roadmap in `CLAUDE.md` section 6.

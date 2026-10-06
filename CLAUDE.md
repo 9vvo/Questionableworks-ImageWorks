@@ -122,6 +122,15 @@ Nothing here is optional; the tiers only set the sequence.
   opacity, blend mode, lock, rename, duplicate, delete, drag reorder, multi-select.
   History panel. New, Open, Save, Save As, Close, Revert.
 
+- **M3a** MCP server, so an AI assistant can drive the running editor. Off by default;
+  local connections only. Every tool maps to an existing command, so each action is
+  undoable and appears in the History panel like a user's. First tools: list open
+  documents, read document and layer structure, create and edit layers and their
+  properties, open and export files, undo and redo, and return a rendered preview of
+  the document. Later milestones add a tool for each new command they introduce. The
+  server exposes editing commands only: it is not a route to image generation
+  (section 1).
+
 ### Tier 1: a usable editor
 
 - **M4** Selection engine with one shared mask representation: rectangular and

@@ -68,3 +68,14 @@ Newest last. One entry per decision: what, why, and whether the owner confirmed 
 - **Packaging runs on demand or on a `v*` tag, not on every push.** The repository
   is private, so Actions minutes are metered, with macOS and Windows runners billed
   at a multiple. Installers are only needed when someone wants to install a build.
+
+## 2026-10-06
+
+- **Repository made public by the owner** so GitHub Actions minutes are free. CI had
+  stopped starting jobs while the repository was private.
+- **MCP support added to the roadmap as M3a**, requested by the owner. Read as: the
+  editor runs an MCP server that an assistant connects to, in the way Blender's and
+  Roblox Studio's do. Placed straight after M3 because it needs only the command
+  engine and a running shell, and it lets an assistant exercise the real app on the
+  owner's machine, which is otherwise untestable from CI. Not yet decided: the
+  transport and which MCP library to use (licence to be checked then).
