@@ -29,6 +29,16 @@ pub trait Channel: Copy + Default + PartialEq + Debug + Send + Sync + 'static {
     /// Inverse of [`Channel::to_f32`]. Integers clamp and round to nearest;
     /// floats pass through, except NaN becomes 0.
     fn from_f32(v: f32) -> Self;
+
+    /// Size of one sample in bytes.
+    const BYTES: usize;
+
+    /// Appends the sample in little-endian byte order.
+    fn write_le(self, out: &mut Vec<u8>);
+
+    /// Reads a sample from exactly [`Channel::BYTES`] little-endian bytes.
+    /// A float NaN reads as 0 so stored data can always be compared.
+    fn read_le(bytes: &[u8]) -> Self;
 }
 
 impl Channel for u8 {
@@ -46,6 +56,18 @@ impl Channel for u8 {
         // `as` saturates and maps NaN to 0, so no explicit clamp is needed.
         (v * 255.0 + 0.5) as u8
     }
+
+    const BYTES: usize = 1;
+
+    #[inline]
+    fn write_le(self, out: &mut Vec<u8>) {
+        out.push(self);
+    }
+
+    #[inline]
+    fn read_le(bytes: &[u8]) -> Self {
+        bytes[0]
+    }
 }
 
 impl Channel for u16 {
@@ -61,6 +83,18 @@ impl Channel for u16 {
     #[inline]
     fn from_f32(v: f32) -> Self {
         (v * 65535.0 + 0.5) as u16
+    }
+
+    const BYTES: usize = 2;
+
+    #[inline]
+    fn write_le(self, out: &mut Vec<u8>) {
+        out.extend_from_slice(&self.to_le_bytes());
+    }
+
+    #[inline]
+    fn read_le(bytes: &[u8]) -> Self {
+        u16::from_le_bytes([bytes[0], bytes[1]])
     }
 }
 
@@ -81,6 +115,18 @@ impl Channel for f32 {
         } else {
             v
         }
+    }
+
+    const BYTES: usize = 4;
+
+    #[inline]
+    fn write_le(self, out: &mut Vec<u8>) {
+        out.extend_from_slice(&self.to_le_bytes());
+    }
+
+    #[inline]
+    fn read_le(bytes: &[u8]) -> Self {
+        Self::from_f32(f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
     }
 }
 
@@ -190,6 +236,21 @@ mod tests {
         assert_eq!(u16::from_f32(f32::NAN), 0);
         assert_eq!(f32::from_f32(3.5), 3.5);
         assert_eq!(f32::from_f32(f32::NAN), 0.0);
+    }
+
+    #[test]
+    fn little_endian_bytes_round_trip() {
+        fn check<C: Channel>(v: C, expected: &[u8]) {
+            let mut bytes = Vec::new();
+            v.write_le(&mut bytes);
+            assert_eq!(bytes, expected);
+            assert_eq!(bytes.len(), C::BYTES);
+            assert_eq!(C::read_le(&bytes), v);
+        }
+        check(0xABu8, &[0xAB]);
+        check(0x1234u16, &[0x34, 0x12]);
+        check(1.0f32, &[0, 0, 0x80, 0x3F]);
+        assert_eq!(f32::read_le(&f32::NAN.to_le_bytes()), 0.0);
     }
 
     #[test]

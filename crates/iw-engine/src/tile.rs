@@ -58,6 +58,14 @@ impl<P: Texel> Tile<P> {
         }
     }
 
+    /// A tile holding `pixels` (row-major), or `None` if there are not
+    /// exactly `TILE_SIZE * TILE_SIZE` of them.
+    pub fn from_pixels(pixels: Vec<P>) -> Option<Self> {
+        (pixels.len() == TILE_AREA).then(|| Self {
+            pixels: pixels.into(),
+        })
+    }
+
     #[inline]
     pub fn pixels(&self) -> &[P] {
         &self.pixels

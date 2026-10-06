@@ -105,6 +105,19 @@ impl BlendMode {
     }
 }
 
+impl BlendMode {
+    /// A stable machine name (`"color_burn"`), used in saved files and by
+    /// anything else that refers to a mode by name. Never change one.
+    pub fn id(self) -> String {
+        self.name().to_lowercase().replace(' ', "_")
+    }
+
+    /// Inverse of [`BlendMode::id`].
+    pub fn from_id(id: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|mode| mode.id() == id)
+    }
+}
+
 /// The blend function `B(backdrop, source)` on straight colour in `0..=1`.
 ///
 /// Dissolve has no colour function of its own: it is Normal with a
@@ -511,6 +524,24 @@ mod tests {
         assert_eq!(blend_rgb(LighterColor, b, s), b);
         assert_eq!(blend_rgb(DarkerColor, s, b), s);
         assert_eq!(blend_rgb(LighterColor, s, b), b);
+    }
+
+    /// These names are written into saved documents.
+    #[test]
+    fn ids_are_stable_and_round_trip() {
+        let ids: Vec<String> = BlendMode::ALL.iter().map(|m| m.id()).collect();
+        assert_eq!(
+            ids.join(" "),
+            "normal dissolve darken multiply color_burn linear_burn darker_color lighten screen \
+             color_dodge linear_dodge lighter_color overlay soft_light hard_light vivid_light \
+             linear_light pin_light hard_mix difference exclusion subtract divide hue saturation \
+             color luminosity"
+        );
+        for mode in BlendMode::ALL {
+            assert_eq!(BlendMode::from_id(&mode.id()), Some(mode));
+        }
+        assert_eq!(BlendMode::from_id("Normal"), None);
+        assert_eq!(BlendMode::from_id(""), None);
     }
 
     #[test]
