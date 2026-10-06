@@ -14,19 +14,23 @@
 //! ao = as + ab - as * ab
 //! ```
 //!
-//! Masks, clipping groups and fill opacity arrive with later milestones and
-//! belong here.
+//! Groups are either pass-through (a folder) or isolated (composited alone,
+//! then blended as one layer). Masks, clipping and fill opacity arrive with
+//! later milestones and belong here.
 
 use crate::blend::{blend_rgb, BlendMode};
-use crate::pixel::{self, Channel};
+use crate::geom::Rect;
+use crate::pixel::{self, Channel, Pixel};
 use crate::raster::Raster;
 use crate::tile::{Tile, TileCoord, TILE_SIZE};
 use std::collections::BTreeSet;
 
-/// One entry in the layer stack handed to the compositor.
+/// A raster layer in the stack handed to the compositor.
 #[derive(Clone, Copy, Debug)]
 pub struct Layer<'a, C: Channel> {
     pub raster: &'a Raster<C>,
+    /// Where the raster's origin sits in the document.
+    pub offset: (i32, i32),
     /// `0.0..=1.0`; values outside are clamped.
     pub opacity: f32,
     pub blend: BlendMode,
@@ -34,10 +38,11 @@ pub struct Layer<'a, C: Channel> {
 }
 
 impl<'a, C: Channel> Layer<'a, C> {
-    /// A visible, fully opaque, Normal layer.
+    /// A visible, fully opaque, Normal layer at the origin.
     pub fn new(raster: &'a Raster<C>) -> Self {
         Self {
             raster,
+            offset: (0, 0),
             opacity: 1.0,
             blend: BlendMode::Normal,
             visible: true,
@@ -54,8 +59,48 @@ impl<'a, C: Channel> Layer<'a, C> {
         self
     }
 
-    fn contributes(&self) -> bool {
-        self.visible && self.opacity > 0.0
+    pub fn with_offset(mut self, x: i32, y: i32) -> Self {
+        self.offset = (x, y);
+        self
+    }
+}
+
+/// How a group combines with what lies beneath it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum GroupBlend {
+    /// The group is only a folder: its layers blend with the layers below
+    /// the group as if they were not grouped.
+    PassThrough,
+    /// The group's layers are composited on their own first, and the result
+    /// is blended as a single layer with this mode.
+    Isolated(BlendMode),
+}
+
+/// A group of nodes, bottom first.
+#[derive(Clone, Debug)]
+pub struct Group<'a, C: Channel> {
+    pub children: Vec<Node<'a, C>>,
+    pub opacity: f32,
+    pub blend: GroupBlend,
+    pub visible: bool,
+}
+
+/// One entry in the stack: a layer or a group.
+#[derive(Clone, Debug)]
+pub enum Node<'a, C: Channel> {
+    Layer(Layer<'a, C>),
+    Group(Group<'a, C>),
+}
+
+impl<'a, C: Channel> From<Layer<'a, C>> for Node<'a, C> {
+    fn from(layer: Layer<'a, C>) -> Self {
+        Node::Layer(layer)
+    }
+}
+
+impl<'a, C: Channel> From<Group<'a, C>> for Node<'a, C> {
+    fn from(group: Group<'a, C>) -> Self {
+        Node::Group(group)
     }
 }
 
@@ -136,85 +181,255 @@ pub fn dissolve_threshold(x: i32, y: i32) -> f32 {
     (h >> 8) as f32 / (1u32 << 24) as f32
 }
 
-/// Composites the stack (bottom layer first) for one tile.
-///
-/// Returns `None` if no layer has content there.
-pub fn composite_tile<C: Channel>(layers: &[Layer<'_, C>], coord: TileCoord) -> Option<Tile<C>> {
-    // While the result is still an untouched copy of one opaque Normal
-    // layer's tile, keep sharing that tile instead of converting it.
-    let mut shared: Option<&Tile<C>> = None;
-    let mut acc: Option<Vec<[f32; 4]>> = None;
-    let (ox, oy) = coord.origin();
+const TILE_AREA: usize = (TILE_SIZE * TILE_SIZE) as usize;
+const TILE: i32 = TILE_SIZE as i32;
 
-    for layer in layers.iter().filter(|l| l.contributes()) {
-        let Some(tile) = layer.raster.tile(coord) else {
-            continue;
-        };
+/// The result so far for one tile.
+enum Acc<'a, C: Channel> {
+    Empty,
+    /// Still an untouched copy of one opaque Normal layer's tile, so it can
+    /// be shared instead of converted.
+    Shared(&'a Tile<Pixel<C>>),
+    Buffer(Vec<[f32; 4]>),
+}
 
-        if acc.is_none()
-            && shared.is_none()
-            && layer.blend == BlendMode::Normal
-            && layer.opacity >= 1.0
-        {
-            shared = Some(tile);
-            continue;
-        }
-
-        let buffer = acc.get_or_insert_with(|| match shared.take() {
-            Some(base) => base.pixels().iter().map(|p| pixel::to_f32(*p)).collect(),
-            None => vec![[0.0; 4]; tile.pixels().len()],
-        });
-        let opacity = layer.opacity.clamp(0.0, 1.0);
-        let size = TILE_SIZE as usize;
-        for (i, (dst, src)) in buffer.iter_mut().zip(tile.pixels()).enumerate() {
-            let x = ox + (i % size) as i32;
-            let y = oy + (i / size) as i32;
-            *dst = blend_pixel(layer.blend, *dst, pixel::to_f32(*src), opacity, x, y);
+impl<C: Channel> Acc<'_, C> {
+    fn to_floats(&self) -> Vec<[f32; 4]> {
+        match self {
+            Acc::Empty => vec![[0.0; 4]; TILE_AREA],
+            Acc::Shared(tile) => tile.pixels().iter().map(|p| pixel::to_f32(*p)).collect(),
+            Acc::Buffer(buffer) => buffer.clone(),
         }
     }
 
-    match (acc, shared) {
-        (Some(buffer), _) => {
-            let mut out = Tile::new();
-            for (dst, src) in out.pixels_mut().iter_mut().zip(&buffer) {
-                *dst = pixel::from_f32(*src);
+    fn buffer(&mut self) -> &mut Vec<[f32; 4]> {
+        if !matches!(self, Acc::Buffer(_)) {
+            *self = Acc::Buffer(self.to_floats());
+        }
+        match self {
+            Acc::Buffer(buffer) => buffer,
+            _ => unreachable!("just converted to a buffer"),
+        }
+    }
+
+    fn into_tile(self) -> Option<Tile<Pixel<C>>> {
+        match self {
+            Acc::Empty => None,
+            Acc::Shared(tile) => Some(tile.clone()),
+            Acc::Buffer(buffer) => {
+                let mut out = Tile::new();
+                for (dst, src) in out.pixels_mut().iter_mut().zip(&buffer) {
+                    *dst = pixel::from_f32(*src);
+                }
+                Some(out)
             }
-            Some(out)
         }
-        (None, Some(tile)) => Some(tile.clone()),
-        (None, None) => None,
     }
+}
+
+/// Source pixels for one destination tile.
+enum Source<'a, C: Channel> {
+    Tile(&'a Tile<Pixel<C>>),
+    Pixels(Vec<Pixel<C>>),
+    Floats(Vec<[f32; 4]>),
+}
+
+/// The part of `layer` that lands on destination tile `coord`, if any.
+fn layer_source<'a, C: Channel>(layer: &Layer<'a, C>, coord: TileCoord) -> Option<Source<'a, C>> {
+    let (dx, dy) = layer.offset;
+    if dx % TILE == 0 && dy % TILE == 0 {
+        let source = TileCoord::new(
+            coord.tx.wrapping_sub(dx / TILE),
+            coord.ty.wrapping_sub(dy / TILE),
+        );
+        return layer.raster.tile(source).map(Source::Tile);
+    }
+    // Not tile-aligned: the destination tile straddles up to four source tiles.
+    let (ox, oy) = coord.origin();
+    let (sx, sy) = (ox.wrapping_sub(dx), oy.wrapping_sub(dy));
+    let (first, _) = TileCoord::of_pixel(sx, sy);
+    let any = [(0, 0), (1, 0), (0, 1), (1, 1)].iter().any(|(i, j)| {
+        layer
+            .raster
+            .tile(TileCoord::new(
+                first.tx.wrapping_add(*i),
+                first.ty.wrapping_add(*j),
+            ))
+            .is_some()
+    });
+    any.then(|| {
+        Source::Pixels(
+            layer
+                .raster
+                .read_rect(Rect::new(sx, sy, TILE_SIZE, TILE_SIZE)),
+        )
+    })
+}
+
+fn blend_source<'a, C: Channel>(
+    acc: &mut Acc<'a, C>,
+    source: Source<'a, C>,
+    mode: BlendMode,
+    opacity: f32,
+    coord: TileCoord,
+) {
+    if let (Acc::Empty, Source::Tile(tile), BlendMode::Normal, true) =
+        (&*acc, &source, mode, opacity >= 1.0)
+    {
+        *acc = Acc::Shared(tile);
+        return;
+    }
+    let (ox, oy) = coord.origin();
+    let opacity = opacity.clamp(0.0, 1.0);
+    let size = TILE_SIZE as usize;
+    let buffer = acc.buffer();
+    let mut apply = |i: usize, src: [f32; 4]| {
+        let x = ox.wrapping_add((i % size) as i32);
+        let y = oy.wrapping_add((i / size) as i32);
+        buffer[i] = blend_pixel(mode, buffer[i], src, opacity, x, y);
+    };
+    match &source {
+        Source::Tile(tile) => tile
+            .pixels()
+            .iter()
+            .enumerate()
+            .for_each(|(i, p)| apply(i, pixel::to_f32(*p))),
+        Source::Pixels(pixels) => pixels
+            .iter()
+            .enumerate()
+            .for_each(|(i, p)| apply(i, pixel::to_f32(*p))),
+        Source::Floats(floats) => floats.iter().enumerate().for_each(|(i, p)| apply(i, *p)),
+    }
+}
+
+/// Composites `nodes` onto `acc`. Returns whether anything was drawn.
+fn composite_nodes<'a, C: Channel>(
+    nodes: &[Node<'a, C>],
+    coord: TileCoord,
+    acc: &mut Acc<'a, C>,
+) -> bool {
+    let mut drew = false;
+    for node in nodes {
+        match node {
+            Node::Layer(layer) => {
+                if !layer.visible || layer.opacity <= 0.0 {
+                    continue;
+                }
+                if let Some(source) = layer_source(layer, coord) {
+                    blend_source(acc, source, layer.blend, layer.opacity, coord);
+                    drew = true;
+                }
+            }
+            Node::Group(group) => {
+                if !group.visible || group.opacity <= 0.0 {
+                    continue;
+                }
+                match group.blend {
+                    GroupBlend::PassThrough if group.opacity >= 1.0 => {
+                        drew |= composite_nodes(&group.children, coord, acc);
+                    }
+                    GroupBlend::PassThrough => {
+                        // Fade between the result without and with the group.
+                        let before = acc.to_floats();
+                        if composite_nodes(&group.children, coord, acc) {
+                            let t = group.opacity.clamp(0.0, 1.0);
+                            for (after, before) in acc.buffer().iter_mut().zip(&before) {
+                                for i in 0..4 {
+                                    after[i] = before[i] + (after[i] - before[i]) * t;
+                                }
+                            }
+                            drew = true;
+                        }
+                    }
+                    GroupBlend::Isolated(mode) => {
+                        let mut inner = Acc::Empty;
+                        composite_nodes(&group.children, coord, &mut inner);
+                        let source = match inner {
+                            Acc::Empty => continue,
+                            Acc::Shared(tile) => Source::Tile(tile),
+                            Acc::Buffer(buffer) => Source::Floats(buffer),
+                        };
+                        blend_source(acc, source, mode, group.opacity, coord);
+                        drew = true;
+                    }
+                }
+            }
+        }
+    }
+    drew
+}
+
+/// Composites the stack (bottom first) for one tile.
+///
+/// Returns `None` if nothing has content there.
+pub fn composite_tile<C: Channel>(
+    nodes: &[Node<'_, C>],
+    coord: TileCoord,
+) -> Option<Tile<Pixel<C>>> {
+    let mut acc = Acc::Empty;
+    composite_nodes(nodes, coord, &mut acc);
+    acc.into_tile()
 }
 
 /// Composites the given tiles of the stack into a new raster.
 pub fn composite_tiles<C: Channel>(
-    layers: &[Layer<'_, C>],
+    nodes: &[Node<'_, C>],
     coords: impl IntoIterator<Item = TileCoord>,
 ) -> Raster<C> {
     let mut out = Raster::new();
     for coord in coords {
-        if let Some(tile) = composite_tile(layers, coord) {
+        if let Some(tile) = composite_tile(nodes, coord) {
             out.insert_tile(coord, tile);
         }
     }
     out
 }
 
-/// Composites every tile any contributing layer has content in.
-pub fn composite<C: Channel>(layers: &[Layer<'_, C>]) -> Raster<C> {
-    let coords: BTreeSet<TileCoord> = layers
-        .iter()
-        .filter(|l| l.contributes())
-        .flat_map(|l| l.raster.tile_coords())
-        .collect();
-    composite_tiles(layers, coords)
+/// Every destination tile that any visible layer in the stack can touch.
+pub fn covered_tiles<C: Channel>(nodes: &[Node<'_, C>]) -> BTreeSet<TileCoord> {
+    fn walk<C: Channel>(nodes: &[Node<'_, C>], out: &mut BTreeSet<TileCoord>) {
+        for node in nodes {
+            match node {
+                Node::Layer(layer) if layer.visible && layer.opacity > 0.0 => {
+                    let (dx, dy) = layer.offset;
+                    for coord in layer.raster.tile_coords() {
+                        let (x, y) = coord.origin();
+                        let (x0, y0) = (x.wrapping_add(dx), y.wrapping_add(dy));
+                        let (first, _) = TileCoord::of_pixel(x0, y0);
+                        let (last, _) = TileCoord::of_pixel(
+                            x0.wrapping_add(TILE - 1),
+                            y0.wrapping_add(TILE - 1),
+                        );
+                        for ty in first.ty..=last.ty {
+                            for tx in first.tx..=last.tx {
+                                out.insert(TileCoord::new(tx, ty));
+                            }
+                        }
+                    }
+                }
+                Node::Group(group) if group.visible && group.opacity > 0.0 => {
+                    walk(&group.children, out)
+                }
+                _ => {}
+            }
+        }
+    }
+    let mut out = BTreeSet::new();
+    walk(nodes, &mut out);
+    out
+}
+
+/// Composites every tile the stack has content in.
+pub fn composite<C: Channel>(nodes: &[Node<'_, C>]) -> Raster<C> {
+    composite_tiles(nodes, covered_tiles(nodes))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pixel::from_straight;
+
     use crate::geom::Rect;
-    use crate::pixel::{from_straight, Pixel};
 
     fn solid<C: Channel>(rgba: [f32; 4]) -> Raster<C> {
         let mut r = Raster::new();
@@ -362,7 +577,7 @@ mod tests {
     fn single_opaque_layer_is_shared_not_copied() {
         let r: Raster<u8> = solid([0.2, 0.4, 0.6, 1.0]);
         let coord = TileCoord::new(0, 0);
-        let out = composite_tile(&[Layer::new(&r)], coord).unwrap();
+        let out = composite_tile(&[Layer::new(&r).into()], coord).unwrap();
         assert!(out.shares_data_with(r.tile(coord).unwrap()));
     }
 
@@ -370,7 +585,7 @@ mod tests {
     fn opaque_top_layer_wins_exactly() {
         let bottom: Raster<u8> = solid([0.2, 0.4, 0.6, 1.0]);
         let top: Raster<u8> = solid([0.9, 0.1, 0.5, 1.0]);
-        let out = composite(&[Layer::new(&bottom), Layer::new(&top)]);
+        let out = composite(&[Layer::new(&bottom).into(), Layer::new(&top).into()]);
         assert_eq!(out.pixel(1, 1), top.pixel(1, 1));
         // Outside the painted 4x4 area both are transparent.
         assert_eq!(out.pixel(10, 10), [0; 4]);
@@ -383,9 +598,9 @@ mod tests {
         let mut hidden = Layer::new(&top);
         hidden.visible = false;
         let out = composite(&[
-            Layer::new(&bottom),
-            hidden,
-            Layer::new(&top).with_opacity(0.0),
+            Layer::new(&bottom).into(),
+            hidden.into(),
+            Layer::new(&top).with_opacity(0.0).into(),
         ]);
         assert_eq!(out, bottom);
     }
@@ -393,7 +608,7 @@ mod tests {
     #[test]
     fn empty_stack_composites_to_nothing() {
         let empty: Raster<u8> = Raster::new();
-        assert!(composite(&[Layer::new(&empty)]).is_empty());
+        assert!(composite(&[Layer::new(&empty).into()]).is_empty());
         assert!(composite_tile::<u8>(&[], TileCoord::new(0, 0)).is_none());
     }
 
@@ -404,8 +619,8 @@ mod tests {
         let mut b: Raster<u8> = Raster::new();
         b.set_pixel(-5, 600, [40, 50, 60, 255]);
         let out = composite(&[
-            Layer::new(&a),
-            Layer::new(&b).with_blend(BlendMode::Multiply),
+            Layer::new(&a).into(),
+            Layer::new(&b).with_blend(BlendMode::Multiply).into(),
         ]);
         assert_eq!(out.tile_count(), 2);
         assert_eq!(out.pixel(5, 5), [10, 20, 30, 255]);
@@ -418,8 +633,8 @@ mod tests {
         let bottom: Raster<u8> = solid([0.4, 0.4, 0.4, 1.0]);
         let top: Raster<u8> = solid([0.6, 0.6, 0.6, 1.0]);
         let out = composite(&[
-            Layer::new(&bottom),
-            Layer::new(&top).with_blend(BlendMode::Multiply),
+            Layer::new(&bottom).into(),
+            Layer::new(&top).with_blend(BlendMode::Multiply).into(),
         ]);
         assert_eq!(out.pixel(0, 0), [61, 61, 61, 255]);
     }
@@ -432,8 +647,8 @@ mod tests {
             let bottom: Raster<C> = solid([0.25, 0.5, 0.75, 0.8]);
             let top: Raster<C> = solid([0.9, 0.3, 0.6, 0.7]);
             let out = composite(&[
-                Layer::new(&bottom),
-                Layer::new(&top).with_blend(mode).with_opacity(0.9),
+                Layer::new(&bottom).into(),
+                Layer::new(&top).with_blend(mode).with_opacity(0.9).into(),
             ]);
             let p: Pixel<C> = out.pixel(2, 2);
             pixel::to_f32(p)
@@ -464,7 +679,169 @@ mod tests {
         hdr.set_pixel(0, 0, [4.0, 2.0, 1.0, 1.0]);
         let mut under: Raster<f32> = Raster::new();
         under.set_pixel(0, 0, [0.1, 0.1, 0.1, 1.0]);
-        let out = composite(&[Layer::new(&under), Layer::new(&hdr).with_opacity(0.5)]);
+        let out = composite(&[
+            Layer::new(&under).into(),
+            Layer::new(&hdr).with_opacity(0.5).into(),
+        ]);
         assert_px(out.pixel(0, 0), [2.05, 1.05, 0.55, 1.0]);
+    }
+
+    fn group<'a>(children: Vec<Node<'a, u8>>, blend: GroupBlend, opacity: f32) -> Node<'a, u8> {
+        Group {
+            children,
+            opacity,
+            blend,
+            visible: true,
+        }
+        .into()
+    }
+
+    #[test]
+    fn tile_aligned_offset_shares_the_source_tile() {
+        let r: Raster<u8> = solid([0.2, 0.4, 0.6, 1.0]);
+        let nodes = [Layer::new(&r).with_offset(512, -256).into()];
+        let out = composite(&nodes);
+        assert_eq!(out.pixel(513, -255), r.pixel(1, 1));
+        assert_eq!(out.pixel(1, 1), [0; 4]);
+        let dest = TileCoord::new(2, -1);
+        assert!(out
+            .tile(dest)
+            .unwrap()
+            .shares_data_with(r.tile(TileCoord::new(0, 0)).unwrap()));
+    }
+
+    #[test]
+    fn unaligned_offset_moves_pixels_across_tile_boundaries() {
+        // A 4x4 block at the origin, moved so it straddles four tiles.
+        let r: Raster<u8> = solid([0.2, 0.4, 0.6, 1.0]);
+        let nodes = [Layer::new(&r).with_offset(254, 254).into()];
+        assert_eq!(covered_tiles(&nodes).len(), 4);
+        let out = composite(&nodes);
+        let p = r.pixel(0, 0);
+        for (x, y) in [(254, 254), (257, 254), (254, 257), (257, 257)] {
+            assert_eq!(out.pixel(x, y), p, "at {x},{y}");
+        }
+        for (x, y) in [(253, 254), (258, 257), (0, 0), (254, 258)] {
+            assert_eq!(out.pixel(x, y), [0; 4], "at {x},{y}");
+        }
+        // Negative offsets too.
+        let out = composite(&[Layer::new(&r).with_offset(-3, -1).into()]);
+        assert_eq!(out.pixel(-3, -1), p);
+        assert_eq!(out.pixel(0, 2), p);
+        assert_eq!(out.pixel(1, 0), [0; 4]);
+    }
+
+    #[test]
+    fn isolated_normal_group_of_one_layer_equals_the_layer() {
+        let bottom: Raster<u8> = solid([0.2, 0.4, 0.6, 1.0]);
+        let top: Raster<u8> = solid([0.9, 0.1, 0.5, 0.5]);
+        let flat = composite(&[Layer::new(&bottom).into(), Layer::new(&top).into()]);
+        let grouped = composite(&[
+            Layer::new(&bottom).into(),
+            group(
+                vec![Layer::new(&top).into()],
+                GroupBlend::Isolated(BlendMode::Normal),
+                1.0,
+            ),
+        ]);
+        assert_eq!(grouped, flat);
+    }
+
+    #[test]
+    fn pass_through_lets_blend_modes_reach_below_the_group_and_isolation_stops_them() {
+        // 0.4 grey under a 0.6 grey Multiply layer that sits inside a group.
+        let bottom: Raster<u8> = solid([0.4, 0.4, 0.4, 1.0]);
+        let top: Raster<u8> = solid([0.6, 0.6, 0.6, 1.0]);
+        let multiply = || vec![Layer::new(&top).with_blend(BlendMode::Multiply).into()];
+
+        let pass = composite(&[
+            Layer::new(&bottom).into(),
+            group(multiply(), GroupBlend::PassThrough, 1.0),
+        ]);
+        assert_eq!(pass.pixel(0, 0), [61, 61, 61, 255]); // 0.24
+
+        // Isolated: inside the group there is nothing to multiply with, so
+        // the layer is plain 0.6 grey, then drawn Normal over the backdrop.
+        let isolated = composite(&[
+            Layer::new(&bottom).into(),
+            group(multiply(), GroupBlend::Isolated(BlendMode::Normal), 1.0),
+        ]);
+        assert_eq!(isolated.pixel(0, 0), [153, 153, 153, 255]);
+    }
+
+    #[test]
+    fn group_opacity_fades_the_whole_group() {
+        let bottom: Raster<u8> = solid([0.0, 0.0, 0.0, 1.0]);
+        let top: Raster<u8> = solid([1.0, 1.0, 1.0, 1.0]);
+        let children = || vec![Layer::new(&top).into()];
+        // Half of white over black is mid grey, either way.
+        let pass = composite(&[
+            Layer::new(&bottom).into(),
+            group(children(), GroupBlend::PassThrough, 0.5),
+        ]);
+        let isolated = composite(&[
+            Layer::new(&bottom).into(),
+            group(children(), GroupBlend::Isolated(BlendMode::Normal), 0.5),
+        ]);
+        assert_eq!(pass.pixel(0, 0), [128, 128, 128, 255]);
+        assert_eq!(isolated.pixel(0, 0), [128, 128, 128, 255]);
+    }
+
+    #[test]
+    fn isolated_group_blend_mode_applies_to_the_group_result() {
+        let bottom: Raster<u8> = solid([0.4, 0.4, 0.4, 1.0]);
+        let a: Raster<u8> = solid([0.2, 0.2, 0.2, 1.0]);
+        let b: Raster<u8> = solid([0.6, 0.6, 0.6, 1.0]);
+        // Inside the group b covers a, so the group is 0.6 grey; multiplied
+        // with the 0.4 backdrop that is 0.24.
+        let out = composite(&[
+            Layer::new(&bottom).into(),
+            group(
+                vec![Layer::new(&a).into(), Layer::new(&b).into()],
+                GroupBlend::Isolated(BlendMode::Multiply),
+                1.0,
+            ),
+        ]);
+        assert_eq!(out.pixel(0, 0), [61, 61, 61, 255]);
+    }
+
+    #[test]
+    fn hidden_and_empty_groups_draw_nothing() {
+        let bottom: Raster<u8> = solid([0.2, 0.4, 0.6, 1.0]);
+        let top: Raster<u8> = solid([0.9, 0.1, 0.5, 1.0]);
+        let hidden: Node<u8> = Group {
+            children: vec![Layer::new(&top).into()],
+            opacity: 1.0,
+            blend: GroupBlend::PassThrough,
+            visible: false,
+        }
+        .into();
+        let out = composite(&[
+            Layer::new(&bottom).into(),
+            hidden,
+            group(vec![], GroupBlend::Isolated(BlendMode::Multiply), 1.0),
+            group(vec![], GroupBlend::PassThrough, 0.5),
+        ]);
+        assert_eq!(out, bottom);
+        // Untouched, so the backdrop tile is still shared.
+        let coord = TileCoord::new(0, 0);
+        assert!(out
+            .tile(coord)
+            .unwrap()
+            .shares_data_with(bottom.tile(coord).unwrap()));
+    }
+
+    #[test]
+    fn nested_groups_composite_inside_out() {
+        let bottom: Raster<u8> = solid([0.4, 0.4, 0.4, 1.0]);
+        let top: Raster<u8> = solid([0.6, 0.6, 0.6, 1.0]);
+        let inner = group(
+            vec![Layer::new(&top).with_blend(BlendMode::Multiply).into()],
+            GroupBlend::PassThrough,
+            1.0,
+        );
+        let outer = group(vec![inner], GroupBlend::PassThrough, 1.0);
+        let out = composite(&[Layer::new(&bottom).into(), outer]);
+        assert_eq!(out.pixel(0, 0), [61, 61, 61, 255]);
     }
 }

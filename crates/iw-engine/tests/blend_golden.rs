@@ -62,7 +62,10 @@ fn source(opaque: bool) -> Raster<u8> {
 
 fn render(mode: BlendMode, opaque: bool) -> Vec<u8> {
     let (b, s) = (backdrop(opaque), source(opaque));
-    let out = composite(&[Layer::new(&b), Layer::new(&s).with_blend(mode)]);
+    let out = composite(&[
+        Layer::new(&b).into(),
+        Layer::new(&s).with_blend(mode).into(),
+    ]);
     out.read_rect(Rect::new(0, 0, SIZE, SIZE))
         .into_iter()
         .flatten()

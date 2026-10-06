@@ -1,26 +1,32 @@
-//! Sparse tiled raster.
+//! Sparse tiled storage: [`Grid`], and its RGBA and mask aliases.
 
 use crate::geom::Rect;
-use crate::pixel::{transparent, Channel, Pixel};
+use crate::pixel::{Pixel, Texel};
 use crate::tile::{Tile, TileCoord, TILE_SIZE};
 use std::collections::BTreeMap;
 
-/// An unbounded RGBA image stored as a sparse grid of tiles.
+/// An unbounded image stored as a sparse grid of tiles.
 ///
-/// A missing tile is fully transparent. Cloning is cheap: the clone shares
-/// every tile until one side writes to it.
+/// A missing tile reads as the default texel (transparent, for pixels).
+/// Cloning is cheap: the clone shares every tile until one side writes to it.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Raster<C: Channel> {
-    tiles: BTreeMap<TileCoord, Tile<C>>,
+pub struct Grid<P: Texel> {
+    tiles: BTreeMap<TileCoord, Tile<P>>,
 }
 
-impl<C: Channel> Default for Raster<C> {
+/// A premultiplied RGBA image.
+pub type Raster<C> = Grid<Pixel<C>>;
+
+/// A single-channel image: alpha channels, and later masks and selections.
+pub type Mask<C> = Grid<C>;
+
+impl<P: Texel> Default for Grid<P> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<C: Channel> Raster<C> {
+impl<P: Texel> Grid<P> {
     pub fn new() -> Self {
         Self {
             tiles: BTreeMap::new(),
@@ -35,21 +41,21 @@ impl<C: Channel> Raster<C> {
         self.tiles.len()
     }
 
-    pub fn tile(&self, coord: TileCoord) -> Option<&Tile<C>> {
+    pub fn tile(&self, coord: TileCoord) -> Option<&Tile<P>> {
         self.tiles.get(&coord)
     }
 
     /// The tile at `coord`, created transparent if absent.
-    pub fn tile_mut(&mut self, coord: TileCoord) -> &mut Tile<C> {
+    pub fn tile_mut(&mut self, coord: TileCoord) -> &mut Tile<P> {
         self.tiles.entry(coord).or_default()
     }
 
     /// Replaces the tile at `coord`, returning the previous one.
-    pub fn insert_tile(&mut self, coord: TileCoord, tile: Tile<C>) -> Option<Tile<C>> {
+    pub fn insert_tile(&mut self, coord: TileCoord, tile: Tile<P>) -> Option<Tile<P>> {
         self.tiles.insert(coord, tile)
     }
 
-    pub fn remove_tile(&mut self, coord: TileCoord) -> Option<Tile<C>> {
+    pub fn remove_tile(&mut self, coord: TileCoord) -> Option<Tile<P>> {
         self.tiles.remove(&coord)
     }
 
@@ -58,22 +64,22 @@ impl<C: Channel> Raster<C> {
         self.tiles.keys().copied()
     }
 
-    pub fn tiles(&self) -> impl Iterator<Item = (TileCoord, &Tile<C>)> + '_ {
+    pub fn tiles(&self) -> impl Iterator<Item = (TileCoord, &Tile<P>)> + '_ {
         self.tiles.iter().map(|(c, t)| (*c, t))
     }
 
-    pub fn pixel(&self, x: i32, y: i32) -> Pixel<C> {
+    pub fn pixel(&self, x: i32, y: i32) -> P {
         let (coord, index) = TileCoord::of_pixel(x, y);
         match self.tiles.get(&coord) {
             Some(tile) => tile.pixels()[index],
-            None => transparent(),
+            None => P::default(),
         }
     }
 
-    pub fn set_pixel(&mut self, x: i32, y: i32, pixel: Pixel<C>) {
+    pub fn set_pixel(&mut self, x: i32, y: i32, pixel: P) {
         let (coord, index) = TileCoord::of_pixel(x, y);
         // Writing transparency into a missing tile must not allocate it.
-        if pixel == transparent() && !self.tiles.contains_key(&coord) {
+        if pixel == P::default() && !self.tiles.contains_key(&coord) {
             return;
         }
         self.tile_mut(coord).pixels_mut()[index] = pixel;
@@ -94,8 +100,8 @@ impl<C: Channel> Raster<C> {
     }
 
     /// Copies `rect` out as row-major pixels. Missing tiles read as transparent.
-    pub fn read_rect(&self, rect: Rect) -> Vec<Pixel<C>> {
-        let mut out = vec![transparent(); rect.area()];
+    pub fn read_rect(&self, rect: Rect) -> Vec<P> {
+        let mut out = vec![P::default(); rect.area()];
         self.for_each_span(rect, |coord, tile_index, out_index, len| {
             if let Some(tile) = self.tiles.get(&coord) {
                 out[out_index..out_index + len]
@@ -109,13 +115,13 @@ impl<C: Channel> Raster<C> {
     ///
     /// # Panics
     /// If `pixels.len()` is not `rect.area()`.
-    pub fn write_rect(&mut self, rect: Rect, pixels: &[Pixel<C>]) {
+    pub fn write_rect(&mut self, rect: Rect, pixels: &[P]) {
         assert_eq!(
             pixels.len(),
             rect.area(),
             "pixel count must match the rectangle"
         );
-        let zero = transparent::<C>();
+        let zero = P::default();
         let mut spans = Vec::new();
         self.for_each_span(rect, |coord, tile_index, src_index, len| {
             spans.push((coord, tile_index, src_index, len));
@@ -131,7 +137,7 @@ impl<C: Channel> Raster<C> {
 
     /// Drops tiles that have become fully transparent.
     pub fn compact(&mut self) {
-        self.tiles.retain(|_, tile| !tile.is_transparent());
+        self.tiles.retain(|_, tile| !tile.is_empty());
     }
 
     /// Calls `f(tile, index_in_tile, index_in_rect, len)` for every run of

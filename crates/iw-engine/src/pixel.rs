@@ -87,6 +87,58 @@ impl Channel for f32 {
 /// One premultiplied RGBA pixel: `[r, g, b, a]`.
 pub type Pixel<C> = [C; 4];
 
+/// Anything a tile can hold: an RGBA [`Pixel`], or a single [`Channel`]
+/// sample for masks. The default value is the "empty" value a missing tile
+/// reads as.
+pub trait Texel: Copy + Default + PartialEq + Debug + Send + Sync + 'static {}
+
+impl<T: Copy + Default + PartialEq + Debug + Send + Sync + 'static> Texel for T {}
+
+/// One value per supported bit depth. Documents choose their depth at run
+/// time, while rasters and the compositor are generic over it; this is the
+/// bridge between the two.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ByDepth<A, B, C> {
+    U8(A),
+    U16(B),
+    F32(C),
+}
+
+impl<A, B, C> ByDepth<A, B, C> {
+    pub fn depth(&self) -> BitDepth {
+        match self {
+            ByDepth::U8(_) => BitDepth::U8,
+            ByDepth::U16(_) => BitDepth::U16,
+            ByDepth::F32(_) => BitDepth::F32,
+        }
+    }
+}
+
+/// Evaluates `$body` with `$x` bound to the payload of whichever variant
+/// `$value` holds. The body must type-check for all three channel types.
+#[macro_export]
+macro_rules! by_depth {
+    ($value:expr, $x:ident => $body:expr) => {
+        match $value {
+            $crate::pixel::ByDepth::U8($x) => $body,
+            $crate::pixel::ByDepth::U16($x) => $body,
+            $crate::pixel::ByDepth::F32($x) => $body,
+        }
+    };
+}
+
+/// Like [`by_depth!`], but wraps each result back in the same variant.
+#[macro_export]
+macro_rules! map_depth {
+    ($value:expr, $x:ident => $body:expr) => {
+        match $value {
+            $crate::pixel::ByDepth::U8($x) => $crate::pixel::ByDepth::U8($body),
+            $crate::pixel::ByDepth::U16($x) => $crate::pixel::ByDepth::U16($body),
+            $crate::pixel::ByDepth::F32($x) => $crate::pixel::ByDepth::F32($body),
+        }
+    };
+}
+
 /// The fully transparent pixel.
 #[inline]
 pub fn transparent<C: Channel>() -> Pixel<C> {

@@ -4,7 +4,7 @@
 //! copy-on-write, so cloning a raster is cheap and an undo record can keep
 //! the old version of just the tiles a stroke touched.
 
-use crate::pixel::{transparent, Channel, Pixel};
+use crate::pixel::Texel;
 use std::sync::Arc;
 
 /// Tile edge length in pixels.
@@ -40,49 +40,50 @@ impl TileCoord {
     }
 }
 
-/// `TILE_SIZE` x `TILE_SIZE` premultiplied RGBA pixels, row-major.
+/// `TILE_SIZE` x `TILE_SIZE` texels, row-major.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Tile<C: Channel> {
-    pixels: Arc<[Pixel<C>]>,
+pub struct Tile<P: Texel> {
+    pixels: Arc<[P]>,
 }
 
-impl<C: Channel> Tile<C> {
-    /// A fully transparent tile.
+impl<P: Texel> Tile<P> {
+    /// A tile of default (empty) texels.
     pub fn new() -> Self {
-        Self::filled(transparent())
+        Self::filled(P::default())
     }
 
-    pub fn filled(pixel: Pixel<C>) -> Self {
+    pub fn filled(pixel: P) -> Self {
         Self {
             pixels: vec![pixel; TILE_AREA].into(),
         }
     }
 
     #[inline]
-    pub fn pixels(&self) -> &[Pixel<C>] {
+    pub fn pixels(&self) -> &[P] {
         &self.pixels
     }
 
     /// Mutable access. Copies the pixel data first if another tile handle
     /// shares it.
     #[inline]
-    pub fn pixels_mut(&mut self) -> &mut [Pixel<C>] {
+    pub fn pixels_mut(&mut self) -> &mut [P] {
         Arc::make_mut(&mut self.pixels)
     }
 
     /// True if both handles point at the same pixel data (no copy has
     /// happened since one was cloned from the other).
-    pub fn shares_data_with(&self, other: &Tile<C>) -> bool {
+    pub fn shares_data_with(&self, other: &Tile<P>) -> bool {
         Arc::ptr_eq(&self.pixels, &other.pixels)
     }
 
-    pub fn is_transparent(&self) -> bool {
-        let zero = transparent::<C>();
+    /// True if every texel is the default (empty) value.
+    pub fn is_empty(&self) -> bool {
+        let zero = P::default();
         self.pixels.iter().all(|p| *p == zero)
     }
 }
 
-impl<C: Channel> Default for Tile<C> {
+impl<P: Texel> Default for Tile<P> {
     fn default() -> Self {
         Self::new()
     }
@@ -112,7 +113,7 @@ mod tests {
 
     #[test]
     fn clone_shares_until_written() {
-        let a: Tile<u8> = Tile::filled([1, 2, 3, 4]);
+        let a: Tile<[u8; 4]> = Tile::filled([1, 2, 3, 4]);
         let mut b = a.clone();
         assert!(a.shares_data_with(&b));
         b.pixels_mut()[0] = [9, 9, 9, 9];
@@ -123,9 +124,14 @@ mod tests {
 
     #[test]
     fn transparency_check() {
-        let mut t: Tile<u16> = Tile::new();
-        assert!(t.is_transparent());
+        let mut t: Tile<[u16; 4]> = Tile::new();
+        assert!(t.is_empty());
         t.pixels_mut()[100] = [0, 0, 0, 1];
-        assert!(!t.is_transparent());
+        assert!(!t.is_empty());
+        // Single-channel tiles work the same way.
+        let mut m: Tile<u8> = Tile::new();
+        assert!(m.is_empty());
+        m.pixels_mut()[0] = 255;
+        assert!(!m.is_empty());
     }
 }
