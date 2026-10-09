@@ -7,6 +7,9 @@
 use crate::command::{apply, Command, Effects};
 use crate::document::{Document, DocumentError};
 
+/// Label of the internal batch that holds a coalesced gesture.
+const COALESCED: &str = "(coalesced)";
+
 /// Default number of undo steps kept.
 pub const DEFAULT_HISTORY_LIMIT: usize = 50;
 
@@ -19,6 +22,9 @@ struct Entry {
     /// Document state ids on either side of the entry.
     before: u64,
     after: u64,
+    /// While set, further commands with the same key fold into this entry
+    /// (see [`Session::execute_coalescing`]).
+    coalesce: Option<String>,
 }
 
 /// One row of the History panel.
@@ -86,10 +92,89 @@ impl Session {
             step: applied.inverse,
             before,
             after: self.state,
+            coalesce: None,
         });
         self.redo.clear();
         self.trim();
         Ok(applied.effects)
+    }
+
+    /// Applies a command that continues a gesture, such as one step of
+    /// dragging an opacity slider. Consecutive commands with the same `key`
+    /// become a single history entry, undone in one step. Call
+    /// [`Session::end_coalescing`] when the gesture ends.
+    ///
+    /// Correct for any mix of commands: the entry undoes them newest first.
+    pub fn execute_coalescing(
+        &mut self,
+        command: Command,
+        key: &str,
+    ) -> Result<Effects, DocumentError> {
+        let continues = self.redo.is_empty()
+            && self
+                .undo
+                .last()
+                .is_some_and(|e| e.coalesce.as_deref() == Some(key) && e.after == self.state);
+        if !continues {
+            let effects = self.execute(command)?;
+            if let Some(entry) = self.undo.last_mut() {
+                entry.coalesce = Some(key.to_owned());
+            }
+            return Ok(effects);
+        }
+        let applied = apply(&mut self.document, command).map_err(|rejected| rejected.error)?;
+        self.state = self.next_state;
+        self.next_state += 1;
+        let entry = self.undo.last_mut().expect("checked above");
+        entry.after = self.state;
+        // Keep one flat list, newest inverse first, so a long drag cannot
+        // build a deeply nested command.
+        let previous = std::mem::replace(
+            &mut entry.step,
+            Command::Batch {
+                label: String::new(),
+                commands: Vec::new(),
+            },
+        );
+        let mut steps = match previous {
+            Command::Batch { label, commands } if label == COALESCED => commands,
+            single => vec![single],
+        };
+        steps.insert(0, applied.inverse);
+        entry.step = Command::Batch {
+            label: COALESCED.to_owned(),
+            commands: steps,
+        };
+        Ok(applied.effects)
+    }
+
+    /// Ends the current gesture, so the next command starts a new entry.
+    pub fn end_coalescing(&mut self) {
+        if let Some(entry) = self.undo.last_mut() {
+            entry.coalesce = None;
+        }
+    }
+
+    /// Identifies the document's current contents. Equal ids mean equal
+    /// contents.
+    pub fn state_id(&self) -> u64 {
+        self.state
+    }
+
+    /// Records that the contents with this state id are what is on disk.
+    /// Used when a save ran in the background while editing continued.
+    pub fn mark_saved_at(&mut self, state: u64) {
+        self.saved_state = Some(state);
+    }
+
+    /// Label of the step [`Session::undo`] would undo.
+    pub fn undo_label(&self) -> Option<&str> {
+        self.undo.last().map(|e| e.label.as_str())
+    }
+
+    /// Label of the step [`Session::redo`] would redo.
+    pub fn redo_label(&self) -> Option<&str> {
+        self.redo.last().map(|e| e.label.as_str())
     }
 
     /// Undoes the latest command. Returns `None` if there is nothing to undo.
@@ -1102,5 +1187,165 @@ mod tests {
             }
             assert!(!s.can_redo());
         }
+    }
+
+    #[test]
+    fn a_dragged_slider_is_one_history_step() {
+        let (mut s, [bg, ..]) = sample();
+        let before = s.document().clone();
+        let steps = s.position();
+        for i in 1..=50 {
+            let p = props(|p| p.opacity = Some(1.0 - i as f32 / 100.0));
+            s.execute_coalescing(Command::SetLayerProps { id: bg, props: p }, "opacity")
+                .unwrap();
+        }
+        s.end_coalescing();
+        let dragged = s.document().clone();
+        assert_eq!(s.position(), steps + 1);
+        assert_eq!(s.undo_label(), Some("Opacity Change"));
+        assert_eq!(s.document().layer(bg).unwrap().opacity, 0.5);
+
+        s.undo();
+        assert_doc!(*s.document(), before);
+        assert_eq!(s.redo_label(), Some("Opacity Change"));
+        s.redo();
+        assert_doc!(*s.document(), dragged);
+
+        // After the gesture ends, the same key starts a new step.
+        s.execute_coalescing(
+            Command::SetLayerProps {
+                id: bg,
+                props: props(|p| p.opacity = Some(0.1)),
+            },
+            "opacity",
+        )
+        .unwrap();
+        assert_eq!(s.position(), steps + 2);
+    }
+
+    #[test]
+    fn coalescing_is_correct_for_mixed_commands_and_keys() {
+        let (mut s, [bg, _, a, ..]) = sample();
+        let before = s.document().clone();
+        let steps = s.position();
+        // Different properties and layers under one key still undo exactly.
+        s.execute_coalescing(
+            Command::SetLayerProps {
+                id: bg,
+                props: props(|p| p.opacity = Some(0.3)),
+            },
+            "k",
+        )
+        .unwrap();
+        s.execute_coalescing(
+            Command::SetLayerProps {
+                id: a,
+                props: props(|p| p.visible = Some(false)),
+            },
+            "k",
+        )
+        .unwrap();
+        s.execute_coalescing(
+            Command::MoveLayer {
+                id: a,
+                parent: None,
+                index: 0,
+            },
+            "k",
+        )
+        .unwrap();
+        s.execute_coalescing(
+            Command::SetLayerProps {
+                id: bg,
+                props: props(|p| p.opacity = Some(0.9)),
+            },
+            "k",
+        )
+        .unwrap();
+        assert_eq!(s.position(), steps + 1);
+        let after = s.document().clone();
+        s.undo();
+        assert_doc!(*s.document(), before);
+        s.redo();
+        assert_doc!(*s.document(), after);
+
+        // A different key starts a new step; so does anything after an undo.
+        s.execute_coalescing(
+            Command::SetLayerProps {
+                id: bg,
+                props: props(|p| p.opacity = Some(0.2)),
+            },
+            "other",
+        )
+        .unwrap();
+        assert_eq!(s.position(), steps + 2);
+        s.undo();
+        s.execute_coalescing(
+            Command::SetLayerProps {
+                id: bg,
+                props: props(|p| p.opacity = Some(0.4)),
+            },
+            "other",
+        )
+        .unwrap();
+        assert_eq!(s.position(), steps + 2);
+        assert!(!s.can_redo());
+
+        // A plain execute in between breaks the run.
+        s.execute(Command::SetLayerProps {
+            id: bg,
+            props: props(|p| p.name = Some("x".into())),
+        })
+        .unwrap();
+        s.execute_coalescing(
+            Command::SetLayerProps {
+                id: bg,
+                props: props(|p| p.opacity = Some(0.6)),
+            },
+            "other",
+        )
+        .unwrap();
+        assert_eq!(s.position(), steps + 4);
+    }
+
+    #[test]
+    fn a_rejected_coalescing_command_changes_nothing() {
+        let (mut s, [bg, ..]) = sample();
+        s.execute_coalescing(
+            Command::SetLayerProps {
+                id: bg,
+                props: props(|p| p.opacity = Some(0.3)),
+            },
+            "k",
+        )
+        .unwrap();
+        let snapshot = s.document().clone();
+        let steps = s.position();
+        let bad = Command::SetLayerProps {
+            id: bg,
+            props: props(|p| p.opacity = Some(3.0)),
+        };
+        assert!(s.execute_coalescing(bad, "k").is_err());
+        assert_doc!(*s.document(), snapshot);
+        assert_eq!(s.position(), steps);
+    }
+
+    #[test]
+    fn a_background_save_marks_the_state_it_saved() {
+        let (mut s, [bg, ..]) = sample();
+        let saved = s.state_id();
+        // Editing continues while the save runs.
+        s.execute(Command::SetLayerProps {
+            id: bg,
+            props: props(|p| p.visible = Some(false)),
+        })
+        .unwrap();
+        s.mark_saved_at(saved);
+        assert!(
+            s.is_modified(),
+            "the edit made after the snapshot is not saved"
+        );
+        s.undo();
+        assert!(!s.is_modified());
     }
 }
