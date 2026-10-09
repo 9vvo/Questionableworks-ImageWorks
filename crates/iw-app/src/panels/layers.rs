@@ -211,6 +211,11 @@ fn row_ui(
     let width = ui.available_width();
     let (rect, response) = ui.allocate_exact_size(vec2(width, ROW_HEIGHT), Sense::click_and_drag());
     let selected = state.selected.contains(&row.id);
+    // Rows are drawn by hand, so describe them for screen readers (and
+    // the UI tests, which find widgets the same way).
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, selected, &row.name)
+    });
     let painter = ui.painter().clone();
     if selected {
         let fill = if state.active == Some(row.id) {
@@ -231,6 +236,9 @@ fn row_ui(
     // Visibility, in a fixed column.
     let eye = Rect::from_min_size(rect.min + vec2(2.0, 2.0), vec2(20.0, 20.0));
     let eye_response = ui.interact(eye, ui.id().with(("eye", row.id)), Sense::click());
+    let eye_label = format!("{} {}", if row.visible { "Hide" } else { "Show" }, row.name);
+    eye_response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &eye_label));
     icons::paint(
         &painter,
         eye.shrink(3.0),
@@ -296,6 +304,13 @@ fn row_ui(
         vec2(20.0, 20.0),
     );
     let lock_response = ui.interact(lock, ui.id().with(("lock", row.id)), Sense::click());
+    let lock_label = format!(
+        "{} {}",
+        if row.locked { "Unlock" } else { "Lock" },
+        row.name
+    );
+    lock_response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &lock_label));
     if row.locked || lock_response.hovered() {
         icons::paint(
             &painter,
@@ -365,8 +380,8 @@ fn row_ui(
 
     // Selection.
     if response.double_clicked()
-        && response
-            .interact_pointer_pos()
+        && ui
+            .input(|i| i.pointer.interact_pos())
             .is_some_and(|p| name_rect.contains(p))
     {
         state.renaming = Some((row.id, row.name.clone()));

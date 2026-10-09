@@ -153,11 +153,23 @@ fn ensure_extension(mut path: PathBuf, format: FileFormat) -> PathBuf {
 
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>, open: Vec<PathBuf>) -> Self {
+        Self::with_options(cc, open, true)
+    }
+
+    /// `native_menu: false` always uses the in-window menu bar, as the UI
+    /// tests do so they run the same on every platform.
+    pub fn with_options(
+        cc: &eframe::CreationContext<'_>,
+        open: Vec<PathBuf>,
+        native_menu: bool,
+    ) -> Self {
         theme::apply(&cc.egui_ctx);
-        let (menu, status) = match NativeMenu::install(cc) {
-            Ok(menu) => (Some(menu), String::new()),
-            Err(_) => (None, String::new()),
+        let menu = if native_menu {
+            NativeMenu::install(cc).ok()
+        } else {
+            None
         };
+        let status = String::new();
         let (tasks_tx, tasks_rx) = channel();
         let mut app = Self {
             docs: Vec::new(),
@@ -1470,5 +1482,24 @@ impl eframe::App for App {
         if self.renderer.pending() > 0 || self.running_tasks > 0 {
             ctx.request_repaint_after(std::time::Duration::from_millis(50));
         }
+    }
+}
+
+#[cfg(test)]
+impl App {
+    pub fn docs(&self) -> &[OpenDoc] {
+        &self.docs
+    }
+
+    pub fn active_doc_for_test(&self) -> Option<&OpenDoc> {
+        self.active_doc()
+    }
+
+    pub fn has_dialog(&self) -> bool {
+        self.dialog.is_some()
+    }
+
+    pub fn tool(&self) -> Tool {
+        self.tool
     }
 }

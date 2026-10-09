@@ -21,6 +21,14 @@ pub fn show(ui: &mut Ui, session: &Session, origin: &str) -> Option<usize> {
                 let current = index == position;
                 let (rect, response) =
                     ui.allocate_exact_size(egui::vec2(ui.available_width(), 22.0), Sense::click());
+                response.widget_info(|| {
+                    egui::WidgetInfo::selected(
+                        egui::WidgetType::SelectableLabel,
+                        true,
+                        current,
+                        &label,
+                    )
+                });
                 if current {
                     ui.painter().rect_filled(rect, 2.0, theme::ACCENT_DIM);
                 } else if response.hovered() {

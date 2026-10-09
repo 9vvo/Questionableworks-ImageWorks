@@ -10,6 +10,8 @@ mod native_menu;
 mod panels;
 mod renderer;
 mod theme;
+#[cfg(test)]
+mod ui_tests;
 mod view;
 
 fn window_icon() -> Option<eframe::egui::IconData> {

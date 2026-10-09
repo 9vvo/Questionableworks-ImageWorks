@@ -153,6 +153,9 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
 /// current tool.
 pub fn button(ui: &mut Ui, icon: Icon, size: f32, selected: bool, tooltip: &str) -> Response {
     let (rect, response) = ui.allocate_exact_size(vec2(size, size), Sense::click());
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::Button, true, selected, tooltip)
+    });
     let visuals = ui.style().interact_selectable(&response, selected);
     if selected || response.hovered() {
         ui.painter().rect_filled(rect, 3.0, visuals.weak_bg_fill);
