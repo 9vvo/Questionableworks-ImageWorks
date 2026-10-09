@@ -122,3 +122,37 @@ Newest last. One entry per decision: what, why, and whether the owner confirmed 
 - **The CI smoke test runs the release binary's `convert` command**, not the
   installer. Launching the packaged app on a runner needs a display and comes with
   the real shell in M3.
+
+## 2026-10-09 (M3)
+
+- **The CPU compositor stays the only compositor for now; the GPU draws composited
+  tiles.** Rule 3 asks for a GPU compositor tested against the CPU one. Compositing
+  runs on worker threads and only for damaged tiles, which is fast enough for the
+  editing M3 offers. A GPU compositor is worth its complexity when brushes (M6) or
+  live adjustments (M8) need per-frame compositing; it will be tested against
+  `blend.rs` then.
+- **One texture per 256 px tile**, nearest-neighbour when magnified and mipmapped
+  when minified. GPU memory is one 8-bit RGBA copy of the visible document extent;
+  a reduced-resolution pyramid for zoomed-out views of huge documents is future work.
+- **Documents are dock tabs alongside panels**, so documents and panels can be
+  rearranged the same way. A Start tab holds the document area when nothing is open.
+- **Our own Quit item, not the system one, on macOS.** The system Quit ends the
+  process without asking about unsaved documents.
+- **Cmd shortcuts are handled by the native menu on macOS and by the app elsewhere.**
+  See ARCHITECTURE.md. Single-key shortcuts never go on menu items.
+- **Save writes `.iwdoc` only.** A document opened from PNG or JPEG asks for a native
+  file name on first Save; Export As writes PNG or JPEG. Photoshop saves back to the
+  opened format with a warning; flattening someone's file on Cmd+S seemed worse.
+- **Revert reloads the file and starts a fresh history** ("Revert" as the first
+  History row). Photoshop records Revert as an undoable step; that needs a whole-
+  document command, which rule 4 rules out.
+- **The New dialog creates 8-bit RGB only**, up to 30,000 px per side. 16-bit is
+  exposed in M16 (charter). Opening a 16-bit PNG still gives a 16-bit document.
+- **New documents open with a "Background" layer** (white or transparent), not
+  recorded as an undo step, like Photoshop.
+- **The opacity slider is one undo step per drag** (`Session::execute_coalescing`).
+- **Layer rows show a placeholder square, not a thumbnail.** Thumbnails need a
+  downscaled render per layer; deferred until they can come from the renderer.
+- **UI tests use `egui_kittest`** (MIT OR Apache-2.0), a dev-dependency only.
+- **Packaging gets the app icon** from `crates/iw-app/assets/icon-*.png`, an original
+  design (three offset sheets on a dark rounded square).

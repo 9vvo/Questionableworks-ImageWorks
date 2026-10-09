@@ -1,6 +1,6 @@
 [package]
 name = "iw-app"
-description = "ImageWorks desktop shell (currently the M0 UI toolkit spike)."
+description = "ImageWorks desktop application."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -34,5 +34,6 @@ identifier = "com.questionableworks.imageworks"
 publisher = "Questionableworks"
 category = "GraphicsAndDesign"
 before-packaging-command = "cargo build --release -p iw-app"
+icons = ["assets/icon-32.png", "assets/icon-64.png", "assets/icon-128.png", "assets/icon-256.png", "assets/icon-512.png", "assets/icon-1024.png"]
 out-dir = "../../dist"
 binaries-dir = "../../target/release"

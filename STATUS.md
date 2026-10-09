@@ -5,42 +5,33 @@ done in `CLAUDE.md` section 5 and names its evidence.
 
 ## Next session
 
-**M0, M1 and M2's engine work are complete. Start M3** (application shell: window,
-menus, panels, GPU canvas, Layers panel, History panel, New/Open/Save).
+**M0 to M3 are complete in code and tests, but M3's GUI has only been run on Linux
+under a virtual display.** First, the owner's manual checks for M3 below (they need a
+Mac). Fix anything they turn up, then start **M3a** (MCP server).
 
-Before starting, confirm `CI` is green for the last M2 commit.
+Things M3a should know:
 
-Things M3 should know:
-
-- The app must change documents only through `Session::execute`; the compiler will
-  not let it do otherwise.
-- `Effects::damage` from execute, undo and redo says which tiles to recomposite.
-  `Document::composite_tile` produces one tile; a single opaque layer's tile comes
-  back shared, so uploading it to the GPU needs no copy.
-- `Session::states`, `position` and `jump_to` are what the History panel needs.
-  `Session::is_modified` drives the unsaved-changes prompt.
-- `format::open` and `format::save` do the file work; `FileFormat::from_path` and
-  `extensions` feed the file dialogs. Saving as PNG or JPEG flattens, so the shell
-  should treat those as Export, not Save.
-- Layer lists are **bottom first** in the engine; a Layers panel shows them reversed.
-- The M0 spike (`spike.rs`) is to be replaced, not extended.
+- Every user action already goes through `App::perform(Action)` or a panel intent
+  that carries a `Command`. MCP tools should call the same paths, so they appear in
+  the History panel and undo like a user's actions.
+- `Command` and `LayerProps` are plain data, and blend modes have stable ids
+  (`BlendMode::id`), which is what tool parameters need.
+- The renderer can produce composited tiles off the UI thread; a "rendered preview"
+  tool can flatten a snapshot (`Document::flatten`) on a worker the same way.
 
 Carried forward:
 
-- Nobody has run the app on Windows. Do the M0 manual checks 1 to 6 there when a
-  Windows machine is available.
-- Pen pressure and HiDPI are untested with the risk accepted by the owner (see the
-  spike table). Pen pressure must be tested on a tablet before M6 is marked done.
-- The macOS app menu shows the window title instead of "ImageWorks". Fix in M3.
-- Packaging has no application icon. Add one in M3.
-- M3a (MCP server) follows M3. Commands are already plain data with stable blend-mode
-  ids, which is what it needs.
-- No performance numbers exist yet. The charter's budgets apply from M3, when there
-  is a canvas to measure. The CPU compositor is a reference implementation and has
-  not been profiled.
+- Nobody has run the app on Windows. CI builds and tests it there, including the UI
+  tests, but no person has seen it.
+- Pen pressure and HiDPI are untested with the risk accepted by the owner. Pen
+  pressure must be tested on a tablet before M6 is marked done.
+- No GPU compositor yet (rule 3; see `DECISIONS.md`). Needed by M6 or M8.
+- No performance measurements yet. The charter's benchmark budgets need a benchmark
+  harness and a machine with a GPU in CI; neither exists.
+- Layer thumbnails, Photoshop's separate lock types, and a zoomed-out image pyramid
+  for very large documents are not built.
 - `.iwdoc` files are larger than they need to be (see `docs/FILE_FORMAT.md`).
-- JPEG import does not keep EXIF data (only applies its orientation), and reads
-  resolution from the JFIF header only. Metadata handling is M9.
+- JPEG import does not keep EXIF data. Metadata handling is M9.
 
 ## M0: foundation (complete)
 
@@ -152,6 +143,57 @@ Checked by hand against Pillow on 2026-10-06 (not in CI):
    `... convert ~/Desktop/asset.iwdoc ~/Desktop/asset-back.png`. The result should
    look identical to the original over any background.
 
-## M3 to M21, including M3a
+## M3: application shell (complete; needs manual checks on macOS)
+
+| Item | State | Evidence or what is missing |
+| --- | --- | --- |
+| Window, native menu bar, toolbar, tool options, status bar | done | Built from one action list (`actions::tests`). UI tests use the same menus in-window (`ui_tests`) |
+| Document tabs and dockable panels | done | `egui_dock`; documents and panels dock, split and tab. `ui_tests::starts_with_the_start_screen` |
+| GPU canvas: zoom, pan, rotate, mirror, cursor coordinates | done | `view::tests` (coordinate maths, zoom about a point, fit, rotation, mirror). Drawing checked on Linux under a virtual display only |
+| Dirty-tile redraw (rule 5) | done | `ui_tests::view_changes_composite_nothing_and_edits_only_their_tiles` |
+| Background compositing (rule 6) | done | `renderer::tests` (results, cancellation of stale tiles, 16-bit and float display) |
+| Layers panel: raster layers, nested groups, visibility, opacity, blend mode, lock, rename, duplicate, delete, drag reorder, multi-select | done | `layers_model::tests` (rows, moves, grouping, selection), `ui_tests` (buttons, toggles, blend mode, rename by double-click, drag to reorder, menu commands with undo and redo) |
+| History panel | done | `ui_tests::layer_menu_commands_undo_and_redo` (clicking a row jumps); `history::tests` |
+| New, Open, Save, Save As, Close, Revert | done | `ui_tests` (New dialog, open from the command line, open errors, Save to the original file, close with the unsaved-changes prompt). Open, Save As and Export As use native dialogs: manual check |
+| Export As (PNG, JPEG) | done | Engine tests from M2; menu item opens the native dialog: manual check |
+| App icon in the window and installers | partial | Window icon set; `.deb` checked locally. `.dmg` and Windows installer icons not yet checked |
+| GPU compositor tested against the CPU one (rule 3) | not started | Deferred to M6/M8; see `DECISIONS.md` |
+| Performance budgets (charter section 4) | not started | No benchmark harness |
+
+Fixed carry-overs from M0: the macOS app menu is titled "ImageWorks" (the first window
+title is the app name), and installers include the app icon.
+
+### Needs manual check (macOS)
+
+Run `cargo run --release -p iw-app` after `git pull`.
+
+1. **Menus.** The menu bar shows ImageWorks, File, Edit, Layer, View, Window. The
+   ImageWorks menu has About, Hide, and Quit. Items that cannot be used are greyed
+   (for example Undo in a new document).
+2. **New.** File > New…, choose "Texture, 1024 × 1024", Create. A white canvas
+   appears in a tab named Untitled-1, and the Layers panel shows Background.
+3. **Layers.** Press Cmd+Shift+N twice; drag "Layer 2" below Background; Cmd-click two
+   layers and press Cmd+G; double-click a name and rename it; toggle an eye and a lock;
+   change the blend mode and drag the opacity slider. Each step appears once in the
+   History panel. Cmd+Z and Cmd+Shift+Z step through them, and Edit > Undo names the
+   step.
+4. **Canvas.** Pinch or Cmd+scroll zooms at the pointer; two-finger scroll pans; hold
+   Space and drag to pan; press R and drag to rotate (Shift snaps); View > Flip View
+   Horizontally mirrors; Cmd+0 fits; Cmd+1 is 100%. The status bar shows the pointer's
+   pixel coordinates, zoom and angle. When zoomed far in, pixels are sharp squares.
+5. **Files.** Open a PNG with transparency (checkerboard shows through), a JPEG
+   photo (upright), and `crates/iw-engine/tests/fixtures/v1.iwdoc` (five layers).
+   Drag an image file onto the window: it opens. Save As writes an `.iwdoc` that
+   reopens identically. Export As writes a PNG and a JPEG.
+6. **Unsaved changes.** Edit a document, then close its tab, then press Cmd+Q: each
+   asks to save first, and Cancel keeps everything open.
+7. **Large document.** File > New…, 8000 × 8000. The canvas fills in within a few
+   seconds while the window stays responsive, and panning and zooming stay smooth.
+8. **Dock and window.** The Dock shows the ImageWorks icon; panels can be dragged to
+   other edges; Window > Reset Panel Layout restores them.
+
+## M3a to M21
+
+All `not started`. See the roadmap in `CLAUDE.md` section 6.
 
 All `not started`. See the roadmap in `CLAUDE.md` section 6.

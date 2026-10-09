@@ -1502,4 +1502,12 @@ impl App {
     pub fn tool(&self) -> Tool {
         self.tool
     }
+
+    pub fn tiles_requested(&self) -> u64 {
+        self.renderer.requested_total()
+    }
+
+    pub fn tiles_pending(&self) -> usize {
+        self.renderer.pending()
+    }
 }

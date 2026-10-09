@@ -4,8 +4,9 @@ A professional raster image editor for macOS and Windows, by Questionableworks.
 Layers, masks, selections, painting, adjustments, filters, text and vectors, with
 non-destructive workflows. No image generation.
 
-**Status: the engine foundation is in place (milestones M0 to M2); the application
-shell is next (M3).** The window the binary opens is still the UI toolkit spike. `STATUS.md` is the source of truth for what works.
+**Status: milestones M0 to M3.** The application opens, saves and exports layered
+documents, with layers, groups, blend modes, opacity, undo history and a rotatable
+canvas. There are no painting or selection tools yet; those start with M4. `STATUS.md` is the source of truth for what works.
 
 | Read this | For |
 | --- | --- |
@@ -21,7 +22,7 @@ shell is next (M3).** The window the binary opens is still the UI toolkit spike.
 
 Quick start: install Rust with [rustup](https://rustup.rs), then `cargo run -p iw-app`.
 
-There is no editing interface yet, but the engine can already convert files:
+Files can also be converted without opening a window:
 
     cargo run --release -p iw-app -- convert input.png output.iwdoc
     cargo run --release -p iw-app -- convert layered.iwdoc flat.jpg --quality 85

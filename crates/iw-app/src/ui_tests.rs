@@ -30,33 +30,33 @@ fn wait(h: &mut Harness<'static, App>, done: impl Fn(&App) -> bool) {
 }
 
 fn menu(h: &mut Harness<'static, App>, title: &str, item: &str) {
+    let title_rect = h.get_by_label(title).rect();
     h.get_by_label(title).click();
     h.run_steps(2);
-    menu_item(h, item);
+    menu_item(h, title_rect, item);
 }
 
-/// Menu items are labelled with their shortcut appended ("New… Ctrl+N").
-/// A panel button can share a menu item's name, so take the last match:
-/// the open menu is drawn on top, after everything else.
-fn menu_item(h: &mut Harness<'static, App>, item: &str) {
+/// Clicks `item` in the menu that opened under `title_rect`. Menu items
+/// are labelled with their shortcut appended ("New… Ctrl+N"), and panels
+/// can have buttons with the same names, so the item is the matching
+/// button closest below the menu title.
+fn menu_item(h: &mut Harness<'static, App>, title_rect: eframe::egui::Rect, item: &str) {
     let prefix = format!("{item} ");
-    let matches = h
+    let best = h
         .query_all_by(move |n| {
             n.role() == eframe::egui::accesskit::Role::Button
                 && n.label()
                     .is_some_and(|l| l == item || l.starts_with(&prefix))
         })
-        .count();
-    assert!(matches > 0, "no menu item {item}");
-    let prefix = format!("{item} ");
-    h.query_all_by(move |n| {
-        n.role() == eframe::egui::accesskit::Role::Button
-            && n.label()
-                .is_some_and(|l| l == item || l.starts_with(&prefix))
-    })
-    .last()
-    .expect("counted above")
-    .click();
+        .filter(|n| {
+            let r = n.rect();
+            r.top() >= title_rect.bottom() - 1.0
+                && r.left() >= title_rect.left() - 8.0
+                && r.left() < title_rect.left() + 60.0
+        })
+        .min_by(|a, b| a.rect().top().total_cmp(&b.rect().top()));
+    best.unwrap_or_else(|| panic!("no menu item {item}"))
+        .click();
     h.run_steps(3);
 }
 
@@ -214,7 +214,8 @@ fn renaming_a_layer_by_double_clicking_its_name() {
     // The name field is focused; replace its text and press Enter.
     h.key_press_modifiers(Modifiers::COMMAND, Key::A);
     h.run_steps(1);
-    h.get_by_role(eframe::egui::accesskit::Role::TextInput).type_text("Sky");
+    h.get_by_role(eframe::egui::accesskit::Role::TextInput)
+        .type_text("Sky");
     h.run_steps(1);
     h.key_press(Key::Enter);
     h.run_steps(3);
@@ -319,4 +320,108 @@ fn opening_a_damaged_file_reports_an_error() {
     assert!(!h.state().has_dialog());
     assert!(h.state().docs().is_empty());
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Architecture rule 5: changing the view moves textures and composites
+/// nothing; an edit composites only the tiles it touched.
+#[test]
+fn view_changes_composite_nothing_and_edits_only_their_tiles() {
+    let mut h = harness(vec![]);
+    h.run_steps(2);
+    new_document(&mut h);
+    wait(&mut h, |app| app.tiles_pending() == 0);
+    // A 1920 x 1080 background covers 8 x 5 tiles.
+    assert_eq!(h.state().tiles_requested(), 40);
+
+    for item in [
+        "Zoom In",
+        "Zoom Out",
+        "100%",
+        "Fit on Screen",
+        "Flip View Horizontally",
+        "Reset Rotation",
+    ] {
+        menu(&mut h, "View", item);
+    }
+    h.key_press(Key::R);
+    h.run_steps(5);
+    assert_eq!(
+        h.state().tiles_requested(),
+        40,
+        "view changes must not recomposite"
+    );
+
+    // A rename changes nothing visible either.
+    menu(&mut h, "Layer", "New Layer");
+    assert_eq!(
+        h.state().tiles_requested(),
+        40,
+        "an empty new layer covers no tiles"
+    );
+
+    // Hiding the background recomposites exactly its tiles.
+    h.get_by_label("Hide Background").click();
+    h.run_steps(3);
+    assert_eq!(h.state().tiles_requested(), 80);
+}
+
+#[test]
+fn choosing_a_blend_mode_from_the_panel() {
+    let mut h = harness(vec![]);
+    h.run_steps(2);
+    new_document(&mut h);
+    h.get_by_value("Normal").click();
+    h.run_steps(3);
+    h.get_by_label("Multiply").click();
+    h.run_steps(3);
+    let doc = h.state().active_doc_for_test().unwrap();
+    assert_eq!(
+        doc.session.document().layers()[0].blend,
+        iw_engine::blend::BlendMode::Multiply
+    );
+    assert_eq!(doc.session.undo_label(), Some("Blending Change"));
+}
+
+#[test]
+fn dragging_a_layer_row_reorders_layers() {
+    use eframe::egui::{Event, PointerButton};
+    let mut h = harness(vec![]);
+    h.run_steps(2);
+    new_document(&mut h);
+    menu(&mut h, "Layer", "New Layer");
+    menu(&mut h, "Layer", "New Layer");
+    assert_eq!(layer_names(h.state()), ["Layer 2", "Layer 1", "Background"]);
+    h.run_steps(60);
+
+    // Drag "Layer 2" to the lower part of the "Background" row.
+    let from = h.get_by_label("Layer 2").rect().center();
+    let to_rect = h.get_by_label("Background").rect();
+    let to = to_rect.center_bottom() - eframe::egui::vec2(0.0, 3.0);
+    let press = |pressed, pos| Event::PointerButton {
+        pos,
+        button: PointerButton::Primary,
+        pressed,
+        modifiers: Default::default(),
+    };
+    h.input_mut().events.push(Event::PointerMoved(from));
+    h.input_mut().events.push(press(true, from));
+    h.step();
+    for i in 1..=10 {
+        let t = i as f32 / 10.0;
+        h.input_mut()
+            .events
+            .push(Event::PointerMoved(from + (to - from) * t));
+        h.step();
+    }
+    h.input_mut().events.push(press(false, to));
+    h.run_steps(3);
+    assert_eq!(layer_names(h.state()), ["Layer 1", "Background", "Layer 2"]);
+    assert_eq!(
+        h.state()
+            .active_doc_for_test()
+            .unwrap()
+            .session
+            .undo_label(),
+        Some("Layer Order")
+    );
 }

@@ -47,6 +47,8 @@ pub struct Renderer {
     results: Receiver<Rendered>,
     workers: Vec<std::thread::JoinHandle<()>>,
     next_generation: u64,
+    /// Tiles ever requested; lets tests check what triggers compositing.
+    requested: u64,
 }
 
 impl Renderer {
@@ -72,6 +74,7 @@ impl Renderer {
             results,
             workers,
             next_generation: 1,
+            requested: 0,
         }
     }
 
@@ -87,6 +90,7 @@ impl Renderer {
     ) -> u64 {
         let generation = self.next_generation;
         self.next_generation += 1;
+        self.requested += coords.len() as u64;
         if let Some(f) = focus {
             coords.sort_by_key(|c| (c.tx - f.tx).abs().max((c.ty - f.ty).abs()));
         }
@@ -123,6 +127,12 @@ impl Renderer {
     /// Finished tiles since the last call.
     pub fn take_results(&self) -> Vec<Rendered> {
         self.results.try_iter().collect()
+    }
+
+    /// Total number of tiles requested since start-up.
+    #[cfg(test)]
+    pub fn requested_total(&self) -> u64 {
+        self.requested
     }
 
     /// Number of tiles still waiting to be composited.

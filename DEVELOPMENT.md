@@ -57,3 +57,21 @@ Add the variant to `Command`, handle it in `command::apply` (validate first, the
 change the document, then return the inverse and the damage), give it a label, and
 add it to the list in `history::tests::every_command_undoes_and_redoes_exactly` and
 to the random test beside it.
+
+## UI tests
+
+`crates/iw-app/src/ui_tests.rs` drives the whole app through `egui_kittest`: it clicks
+menus and buttons found by their accessibility labels and presses shortcuts, with no
+window or GPU. They run in `cargo test` on every platform. The app is built with the
+in-window menu bar for these tests, so they behave the same on macOS and Windows.
+
+Widgets drawn by hand (layer rows, history rows) must call `response.widget_info(...)`
+with a label, or neither screen readers nor the tests can find them.
+
+The harness advances time by 1/60 s per step. Clicks less than 0.6 s apart can count
+as a triple click; `run_steps(60)` before a double click avoids that.
+
+## Running the app
+
+    cargo run -p iw-app                 # the application
+    cargo run -p iw-app -- file.png     # and open a file
