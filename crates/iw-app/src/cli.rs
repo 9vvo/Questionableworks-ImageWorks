@@ -5,7 +5,7 @@ use std::path::Path;
 
 const USAGE: &str = "\
 Usage:
-  imageworks                               Open the application
+  imageworks [<file>...]                   Open the application (and these files)
   imageworks convert <input> <output> [--quality <1-100>]
                                            Convert between .iwdoc, .png and .jpg
   imageworks --version
@@ -38,10 +38,12 @@ pub fn run(args: &[String]) -> Option<i32> {
                 1
             }
         }),
-        Some(other) => {
-            eprintln!("imageworks: unknown argument \"{other}\"\n\n{USAGE}");
+        Some(other) if other.starts_with('-') => {
+            eprintln!("imageworks: unknown option \"{other}\"\n\n{USAGE}");
             Some(2)
         }
+        // Anything else is a file to open in the application.
+        Some(_) => None,
     }
 }
 

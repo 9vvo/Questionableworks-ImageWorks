@@ -1362,6 +1362,7 @@ dependencies = [
  "egui_dock",
  "iw-engine",
  "muda",
+ "png",
  "raw-window-handle",
  "rfd",
 ]

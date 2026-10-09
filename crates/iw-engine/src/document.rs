@@ -446,6 +446,44 @@ impl Document {
         })
     }
 
+    /// A new document whose single layer, "Background", is filled with a
+    /// straight (not premultiplied) RGBA colour across the canvas. Tiles
+    /// that are wholly inside the canvas share one block of memory.
+    pub fn with_background(
+        width: u32,
+        height: u32,
+        bit_depth: BitDepth,
+        rgba: [f32; 4],
+    ) -> Result<Self, DocumentError> {
+        fn fill<C: Channel>(width: u32, height: u32, rgba: [f32; 4]) -> Raster<C> {
+            let pixel: Pixel<C> = crate::pixel::from_straight(rgba);
+            let shared = Tile::filled(pixel);
+            let size = crate::tile::TILE_SIZE;
+            let mut raster = Raster::new();
+            for ty in 0..height.div_ceil(size) {
+                for tx in 0..width.div_ceil(size) {
+                    let (x, y) = (tx * size, ty * size);
+                    let (w, h) = ((width - x).min(size), (height - y).min(size));
+                    if w == size && h == size {
+                        raster.insert_tile(TileCoord::new(tx as i32, ty as i32), shared.clone());
+                    } else {
+                        let rect = Rect::new(x as i32, y as i32, w, h);
+                        raster.write_rect(rect, &vec![pixel; rect.area()]);
+                    }
+                }
+            }
+            raster
+        }
+        let mut doc = Self::new(width, height, bit_depth)?;
+        let pixels = match bit_depth {
+            BitDepth::U8 => ByDepth::U8(fill::<u8>(width, height, rgba)),
+            BitDepth::U16 => ByDepth::U16(fill::<u16>(width, height, rgba)),
+            BitDepth::F32 => ByDepth::F32(fill::<f32>(width, height, rgba)),
+        };
+        doc.insert_layer(None, 0, Layer::raster("Background", pixels))?;
+        Ok(doc)
+    }
+
     pub fn width(&self) -> u32 {
         self.width
     }
@@ -982,5 +1020,53 @@ impl Document {
     /// what the loaded items require.
     pub(crate) fn restore_next_id(&mut self, next_id: u64) {
         self.next_id = self.next_id.max(next_id);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn background_fills_exactly_the_canvas_and_shares_interior_tiles() {
+        let doc = Document::with_background(600, 300, BitDepth::U8, [1.0, 1.0, 1.0, 1.0]).unwrap();
+        assert_eq!(doc.layers().len(), 1);
+        assert_eq!(doc.layers()[0].name, "Background");
+        let ByDepth::U8(pixels) = doc.flatten().pixels else {
+            panic!()
+        };
+        assert!(pixels.iter().all(|p| *p == [255, 255, 255, 255]));
+        let LayerKind::Raster {
+            pixels: ByDepth::U8(r),
+            ..
+        } = &doc.layers()[0].kind
+        else {
+            panic!()
+        };
+        assert_eq!(r.tile_count(), 6);
+        assert_eq!(r.pixel(599, 299), [255, 255, 255, 255]);
+        assert_eq!(r.pixel(600, 0), [0; 4], "nothing past the right edge");
+        assert_eq!(r.pixel(0, 300), [0; 4], "nothing past the bottom edge");
+        let a = r.tile(TileCoord::new(0, 0)).unwrap();
+        let b = r.tile(TileCoord::new(1, 0)).unwrap();
+        assert!(
+            a.shares_data_with(b),
+            "interior tiles should share one block"
+        );
+    }
+
+    #[test]
+    fn transparent_background_and_other_depths() {
+        let doc = Document::with_background(10, 10, BitDepth::U16, [0.0, 0.0, 0.0, 0.0]).unwrap();
+        let ByDepth::U16(pixels) = doc.flatten().pixels else {
+            panic!()
+        };
+        assert!(pixels.iter().all(|p| *p == [0; 4]));
+        let doc = Document::with_background(3, 2, BitDepth::F32, [0.5, 0.25, 1.0, 1.0]).unwrap();
+        let ByDepth::F32(pixels) = doc.flatten().pixels else {
+            panic!()
+        };
+        assert_eq!(pixels, vec![[0.5, 0.25, 1.0, 1.0]; 6]);
+        assert!(Document::with_background(0, 10, BitDepth::U8, [1.0; 4]).is_err());
     }
 }
