@@ -34,6 +34,7 @@ identifier = "com.questionableworks.imageworks"
 publisher = "Questionableworks"
 category = "GraphicsAndDesign"
 before-packaging-command = "cargo build --release -p iw-app"
-icons = ["assets/icon-32.png", "assets/icon-64.png", "assets/icon-128.png", "assets/icon-256.png", "assets/icon-512.png", "assets/icon-1024.png"]
+# macOS uses the .icns, Windows the .ico, Linux the PNGs.
+icons = ["assets/icon.icns", "assets/icon.ico", "assets/icon-32.png", "assets/icon-128.png", "assets/icon-256.png", "assets/icon-512.png"]
 out-dir = "../../dist"
 binaries-dir = "../../target/release"
