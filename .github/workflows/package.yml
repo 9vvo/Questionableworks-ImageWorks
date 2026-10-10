@@ -29,7 +29,7 @@ jobs:
       - run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@v2
       - run: cargo install cargo-packager --locked --version 0.11.8
-      - run: cargo packager --release -p iw-app --formats ${{ matrix.format }}
+      - run: bash scripts/ci-run.sh cargo packager --release -p iw-app --formats ${{ matrix.format }}
       - uses: actions/upload-artifact@v4
         with:
           name: imageworks-${{ matrix.format }}
