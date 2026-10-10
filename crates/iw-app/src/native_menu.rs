@@ -113,7 +113,7 @@ mod native {
         if s.modifiers.alt {
             m |= Modifiers::ALT;
         }
-        Some(Accelerator::new(Some(m), code(s.logical_key)?))
+        Some(Accelerator::new(m, code(s.logical_key)?))
     }
 
     impl NativeMenu {
