@@ -156,7 +156,7 @@ Checked by hand against Pillow on 2026-10-06 (not in CI):
 | History panel | done | `ui_tests::layer_menu_commands_undo_and_redo` (clicking a row jumps); `history::tests` |
 | New, Open, Save, Save As, Close, Revert | done | `ui_tests` (New dialog, open from the command line, open errors, Save to the original file, close with the unsaved-changes prompt). Open, Save As and Export As use native dialogs: manual check |
 | Export As (PNG, JPEG) | done | Engine tests from M2; menu item opens the native dialog: manual check |
-| App icon in the window and installers | partial | Window icon set; `.deb` checked locally. `.dmg` and Windows installer icons not yet checked |
+| App icon in the window and installers | done | Window icon set at start-up; `Package` workflow builds the `.dmg` and NSIS installer with the icon (run 38008572087). How it looks in Finder and the Start menu: manual check |
 | GPU compositor tested against the CPU one (rule 3) | not started | Deferred to M6/M8; see `DECISIONS.md` |
 | Performance budgets (charter section 4) | not started | No benchmark harness |
 

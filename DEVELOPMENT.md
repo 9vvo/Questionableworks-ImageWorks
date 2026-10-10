@@ -13,6 +13,11 @@ Read `CLAUDE.md` first; it sets the order of work and the definition of done.
 CI runs the same commands on macOS and Windows, then builds the release binary and
 runs `imageworks --version`.
 
+CI steps run through `scripts/ci-run.sh`, which repeats the first error lines as
+GitHub annotations. Annotations can be read with
+`gh api repos/<owner>/<repo>/check-runs/<job id>/annotations` from places where the
+raw logs cannot be downloaded.
+
 ## Adding a dependency
 
 Run `cargo deny check licenses`. If it fails, do not add an exception yourself: the
